@@ -1,29 +1,22 @@
 use std::fs;
-use std::process::{Command, Stdio, Output, exit};
+use std::process::{Command, Output, exit};
 use std::thread::sleep;
-use libc::daemon;
-use libc::getuid;
 use std::time::Duration;
 use std::os::unix::process::ExitStatusExt;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time;
 use chrono::Local;
-use std::fmt;
-use libc::flock;
 use nix::unistd::Pid;
-use std::os::unix::io::AsRawFd;
-use nix::fcntl::{Flock, FlockArg};
+use nix::fcntl;
 use nix::sys::signal;
 use fs2::FileExt;
-use std::path::Path;
 use std::fs::File;
-use std::os::unix::fs::OpenOptionsExt;
 use std::sync::atomic::{AtomicI32, Ordering};
-const LOCK_FILE: &str = "/data/adb/.config/AZRUST/.lock";
+const LOCK_FILE: &str = "/data/adb/.config/AZenith/.lock";
 const NOTIFY_TITLE: &str = "AZenith";
-const LOG_FILE: &str = "/data/adb/.config/AZRUST/AZenith.log";
-const GAMELIST: &str = "/data/adb/.config/AZRUST/gamelist/gamelist.txt";
+const LOG_FILE: &str = "/data/adb/.config/AZenith/debug/AZenith.log";
+const GAMELIST: &str = "/data/adb/.config/AZenith/gamelist/gamelist.txt";
 static MLBB_PID: AtomicI32 = AtomicI32::new(0);
 #[derive(Debug, PartialEq)]
 enum MLBBState {
@@ -225,53 +218,6 @@ fn handle_mlbb(gamestart: &str) -> MLBBState {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// Function Name      : checkpids
-// Returns            : pid (pid_t) - PID of process
-// Description        : Fetch PID from a process name.
-/////////////////////////////////////////////////////////////////////////////////////////
-fn checkpids(pkg: &str) -> bool {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(&format!("pidof {}", pkg))
-        .output()
-        .unwrap_or_else(|_| Output {
-            status: std::process::ExitStatus::from_raw(1),
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        });
-
-    let mut candidates: Vec<String> = Vec::new();
-
-    if !output.stdout.is_empty() {
-        let pids = String::from_utf8_lossy(&output.stdout);
-        candidates.extend(pids.split_whitespace().map(|s| s.to_string()));
-    } else {
- 
-        if let Ok(entries) = fs::read_dir("/proc") {
-            for entry in entries.flatten() {
-                if let Some(file_name) = entry.file_name().to_str() {
-                    if file_name.chars().all(|c| c.is_ascii_digit()) {
-                        candidates.push(file_name.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    for pid in candidates {
-        let cmdline_path = format!("/proc/{}/cmdline", pid);
-        if let Ok(cmdline) = fs::read(&cmdline_path) {
-            let s = String::from_utf8_lossy(&cmdline);
-            if s.starts_with(pkg) && !s.contains(':') {
-                return true; 
-            }
-        }
-    }
-
-    false
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
 // Function Name      : get_low_power_state
 // Inputs             : None
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -363,7 +309,7 @@ fn main() {
         }
     }
 
-    let lock_file = acquire_lock().unwrap_or_else(|| {
+    let _lock_file = acquire_lock().unwrap_or_else(|| {
         eprintln!("\x1b[31mERROR:\x1b[0m Another instance of the daemon is already running!");
         std::process::exit(1);
     });
@@ -466,5 +412,3 @@ fn main() {
         }
     }
 }
-
-

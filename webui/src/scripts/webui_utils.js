@@ -281,7 +281,7 @@ async function getAndroidVersion() {
 }
 async function checkServiceStatus() {
   let { errno: c, stdout: s } = await executeCommand(
-      "/system/bin/toybox pidof sys.azenith-service"
+      "/system/bin/toybox pidof sys_azenithrs-service"
     ),
     r = document.getElementById("serviceStatus"),
     d = document.getElementById("servicePID");
@@ -419,19 +419,6 @@ async function setschedtunes(c) {
     c
       ? "setprop persist.sys.azenithconf.schedtunes 1"
       : "setprop persist.sys.azenithconf.schedtunes 0"
-  );
-}
-async function checkiosched() {
-  let { errno: c, stdout: s } = await executeCommand(
-    "getprop persist.sys.azenithconf.iosched"
-  );
-  0 === c && (document.getElementById("iosched").checked = "1" === s.trim());
-}
-async function setiosched(c) {
-  await executeCommand(
-    c
-      ? "setprop persist.sys.azenithconf.iosched 1"
-      : "setprop persist.sys.azenithconf.iosched 0"
   );
 }
 async function applyFSTRIM() {
@@ -739,7 +726,7 @@ async function startService() {
     }
 
     let { stdout: pid } = await executeCommand(
-      "/system/bin/toybox pidof sys.azenith-service"
+      "/system/bin/toybox pidof sys_azenithrs-service"
     );
     if (!pid || pid.trim() === "") {
       showToast("Service dead, Please reboot!");
@@ -749,7 +736,7 @@ async function startService() {
     showToast("Restarting Daemon...");
 
     await executeCommand(
-      "setprop persist.sys.azenith.state stopped && pkill -9 -f sys.azenith-service; su -c '/data/adb/modules/AZenith/system/bin/sys.azenith-service > /dev/null 2>&1 & disown'"
+      "setprop persist.sys.azenith.state stopped && pkill -9 -f sys_azenithrs-service; su -c '/data/adb/modules/AZenith/system/bin/sys_azenithrs-service > /dev/null 2>&1 & disown'"
     );
 
     await checkServiceStatus();
@@ -759,19 +746,6 @@ async function startService() {
   }
 }
 
-async function checkGPreload() {
-  let { errno: c, stdout: s } = await executeCommand(
-    "getprop persist.sys.azenithconf.APreload"
-  );
-  0 === c && (document.getElementById("GPreload").checked = "1" === s.trim());
-}
-async function setGPreloadStatus(c) {
-  await executeCommand(
-    c
-      ? "setprop persist.sys.azenithconf.APreload 1"
-      : "setprop persist.sys.azenithconf.APreload 0"
-  );
-}
 async function checkRamBoost() {
   let { errno: c, stdout: s } = await executeCommand(
     "getprop persist.sys.azenithconf.clearbg"
@@ -1068,9 +1042,6 @@ function setupUIListeners() {
     .getElementById("trace")
     ?.addEventListener("change", (e) => setdtrace(e.target.checked));
   document
-    .getElementById("GPreload")
-    ?.addEventListener("change", (e) => setGPreloadStatus(e.target.checked));
-  document
     .getElementById("clearbg")
     ?.addEventListener("change", (e) => setRamBoostStatus(e.target.checked));
   document
@@ -1088,9 +1059,6 @@ function setupUIListeners() {
   document
     .getElementById("logger")
     ?.addEventListener("change", (e) => setlogger(e.target.checked));
-  document
-    .getElementById("iosched")
-    ?.addEventListener("change", (e) => setiosched(e.target.checked));
   document
     .getElementById("malisched")
     ?.addEventListener("change", (e) => setmalisched(e.target.checked));
@@ -1147,7 +1115,6 @@ function heavyInit() {
   checkAvailableRAM(),
     checkProfile(),
     checkServiceStatus(),
-    checkGPreload(),
     loadColorSchemeSettings(),
     checkCPUFrequencies(),
     setInterval(checkCPUFrequencies, 2e3),
@@ -1163,7 +1130,6 @@ function heavyInit() {
       checkfpsged(),
       checkOPPIndexStatus(),
       checkDThermal(),
-      checkiosched(),
       checkmalisched(),
       checkAI(),
       checkDND(),
