@@ -13,10 +13,13 @@ use nix::sys::signal;
 use fs2::FileExt;
 use std::fs::File;
 use std::sync::atomic::{AtomicI32, Ordering};
-const LOCK_FILE: &str = "/data/adb/.config/AZenith/.lock";
+use std::fs;
+use std::io::Read;
+use std::path::Path;
+const LOCK_FILE: &str = "/sdcard/AZenith/.lock";
 const NOTIFY_TITLE: &str = "AZenith";
-const LOG_FILE: &str = "/data/adb/.config/AZenith/debug/AZenith.log";
-const GAMELIST: &str = "/data/adb/.config/AZenith/gamelist/gamelist.txt";
+const LOG_FILE: &str = "/sdcard/AZenith/debug/AZenith.log";
+const GAMELIST: &str = "/sdcard/AZenith/gamelist/gamelist.txt";
 static MLBB_PID: AtomicI32 = AtomicI32::new(0);
 #[derive(Debug, PartialEq)]
 enum MLBBState {
@@ -71,11 +74,11 @@ fn timestamp() -> String {
 /////////////////////////////////////////////////////////////////////////////////////////
 fn notify(message: &str) {
     let cmd = format!(
-        "su -lp 2000 -c \"/system/bin/cmd notification post \
+        "/system/bin/cmd notification post \
         -t '{}' \
         -i file:///data/local/tmp/module_icon.png \
         -I file:///data/local/tmp/module_icon.png \
-        '{}' '{}'\" >/dev/null",
+        '{}' '{}'",
         NOTIFY_TITLE, NOTIFY_TITLE, message
     );
 
@@ -96,7 +99,7 @@ fn notify(message: &str) {
 /////////////////////////////////////////////////////////////////////////////////////////
 fn apply_profile(profile: Profiler) {
     let profile_val = profile as i8;
-    let _ = Command::new("sys.azenith-profilesettings")
+    let _ = Command::new("sys.azenithnonr-profilesettings")
         .arg(profile_val.to_string())
         .status();
 }
@@ -148,16 +151,15 @@ fn execute_command(cmd: &str) -> Option<String> {
 /////////////////////////////////////////////////////////////////////////////////////////
 fn show_toast(message: &str) {
     let cmd = format!(
-        "su -lp 2000 -c \"/system/bin/am start -a android.intent.action.MAIN \
-         -e toasttext '{}' -n bellavita.toast/.MainActivity >/dev/null 2>&1\"",
+        "/system/bin/am start -a android.intent.action.MAIN \
+         -e toasttext '{}' \
+         -n bellavita.toast/.MainActivity >/dev/null 2>&1",
         message
     );
 
-    let _ = Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .status()
-        .map_err(|e| eprintln!("Failed to show toast: {}", e));
+    if let Err(e) = Command::new("sh").arg("-c").arg(&cmd).status() {
+        eprintln!("Failed to show toast: {}", e);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -166,7 +168,6 @@ fn show_toast(message: &str) {
 // Returns            : none
 // Description        : Checks if Another instance is running
 /////////////////////////////////////////////////////////////////////////////////////////
-
 fn acquire_lock() -> Option<File> {
     let file = OpenOptions::new()
         .write(true)
@@ -243,26 +244,62 @@ fn get_low_power_state() -> bool {
 // Returns            : pid (pid_t) - PID of process
 // Description        : Fetch PID from a process name.
 /////////////////////////////////////////////////////////////////////////////////////////
-fn get_pid(pkg: &str) -> i32 {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(format!("pidof {}", pkg))
-        .output()
-        .unwrap_or_else(|_| Output {
-            status: std::process::ExitStatus::from_raw(1),
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        });
+fn get_pid(name: &str) -> i32 {
+    let mut tracked_pid: i32 = 0;
 
-    if output.stdout.is_empty() {
-        return 0;
+    let entries = match fs::read_dir("/proc") {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let file_name = entry.file_name();
+        let pid_str = file_name.to_string_lossy();
+
+        // Check if directory name is all digits (valid PID)
+        if !pid_str.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+
+        // Build /proc/<pid>/cmdline path
+        let cmdline_path = format!("/proc/{}/cmdline", pid_str);
+
+        // Read cmdline
+        let mut file = match fs::File::open(&cmdline_path) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+
+        let mut cmdline = Vec::new();
+        if file.read_to_end(&mut cmdline).is_err() || cmdline.is_empty() {
+            continue;
+        }
+
+        // Replace NUL bytes with spaces
+        for byte in &mut cmdline {
+            if *byte == 0 {
+                *byte = b' ';
+            }
+        }
+
+        let cmdline_str = String::from_utf8_lossy(&cmdline);
+
+        // Substring match (same as your C version)
+        if cmdline_str.contains(name) {
+            if let Ok(pid_val) = pid_str.parse::<i32>() {
+                if tracked_pid == 0 || pid_val < tracked_pid {
+                    tracked_pid = pid_val;
+                }
+            }
+        }
     }
 
-    let pids = String::from_utf8_lossy(&output.stdout);
-    pids.split_whitespace()
-        .next()
-        .and_then(|pid_str| pid_str.parse::<i32>().ok())
-        .unwrap_or(0)
+    tracked_pid
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -331,7 +368,7 @@ fn main() {
     let mut notify_if_running = false;
 
     // Clear old logs
-    execute_command("rm -f /data/adb/.config/AZRUST/AZenith.log");
+    execute_command("rm -f /sdcard/AZenith/debug/AZenith.log");
 
     // Run Daemon
     let pid = std::process::id();
@@ -341,7 +378,7 @@ fn main() {
     apply_profile(Profiler::Perfcommon);
 
     loop {
-        sleep(Duration::from_secs(15));
+        sleep(Duration::from_secs(5));
 
         // Only fetch gamestart when user not in-game
         if gamestart.is_none() {
@@ -364,7 +401,7 @@ fn main() {
                 continue;
             }
 
-            // Get PID and check if the game is really running
+            // Get PID and check if the game is the real running program
             // Handle weird behavior of MLBB
             game_pid = if mlbb_is_running == MLBBState::Running {
                 MLBB_PID.load(Ordering::Relaxed)
