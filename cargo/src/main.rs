@@ -13,7 +13,6 @@ use nix::sys::signal;
 use fs2::FileExt;
 use std::fs::File;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::fs;
 use std::io::Read;
 use std::path::Path;
 const LOCK_FILE: &str = "/sdcard/AZenith/.lock";
