@@ -786,37 +786,50 @@ fn release_if_applied(daemon: &mut Daemon, why: &str) {
 
 /// Battery current in mA, positive.
 ///
-/// Tries the two paths the C tried, in the same order. The C normalised values
-/// above 1000 by dividing by 1000 — that heuristic silently mangles a genuine
-/// 1200 mA reading into 1 mA, so the units are instead detected from the node
-/// name (`BatteryAverageCurrent` is always µA; `current_now` is mA on most
-/// modern kernels and µA on older MTK ones).
+/// Tries the two paths the C tried, in the same order, and normalises with the
+/// C's magnitude test: a value above 1000 is microamps and is divided by 1000.
+///
+/// An earlier port dropped that heuristic and instead decided units from the
+/// node name, assuming `current_now` was always mA. On the X6739 (MT6893) it is
+/// microamps — an idle read of `-170800` — so every sample came back as
+/// 170800 mA and the `< 50` success gate could never fire. The C heuristic
+/// reads 170800 as 170 mA, which is correct. The name-based guess is the
+/// better idea attached to the wrong data; keep the C behaviour until a
+/// device-agnostic unit source exists.
 ///
 /// Returns `0` when neither path can be read. The C returned `9999`, which made
 /// the `> 50` gate *pass* on a device with no readable current node — bypass
 /// would engage on a phone that was not charging. Failing closed here is the
 /// behaviour the threshold rule intends.
 fn read_current_ma() -> i32 {
-    const PATHS: &[(&str, bool)] = &[
-        // (path, value_is_microamps)
-        ("/sys/class/power_supply/battery/current_now", false),
-        (
-            "/sys/class/power_supply/battery/BatteryAverageCurrent",
-            true,
-        ),
+    const PATHS: &[&str] = &[
+        "/sys/class/power_supply/battery/current_now",
+        "/sys/class/power_supply/battery/BatteryAverageCurrent",
     ];
 
-    for (path, is_ua) in PATHS {
+    for path in PATHS {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
         let Ok(val) = text.trim().parse::<i32>() else {
             continue;
         };
-        let ma = if *is_ua { val / 1000 } else { val.abs() };
-        return ma;
+        return current_to_ma(val);
     }
     0
+}
+
+/// Normalises a raw `current_now` / `BatteryAverageCurrent` reading to mA.
+///
+/// Split out of [`read_current_ma`] so the unit rule is testable without a
+/// device: the function that reads it can only ever be exercised on hardware,
+/// and this is the part that was wrong.
+fn current_to_ma(val: i32) -> i32 {
+    // Order matters: the C took the absolute value *before* the >1000 test.
+    // Testing first would send a discharging `-170800` down the "already mA"
+    // branch and return it unnormalised.
+    let val = val.abs();
+    if val > 1000 { val / 1000 } else { val }
 }
 
 /// The full node table, for `--bypasspathlist`.
@@ -824,12 +837,134 @@ pub fn all_nodes() -> &'static [ChargingNode] {
     CHARGING_NODES
 }
 
+/// Seconds to sample the charging current per probed node. Matches the C loop.
+const PROBE_SAMPLE_SECS: u32 = 10;
+
+/// A node counts as working if the current drops below this, in mA. The C
+/// literal was 50; kept byte-for-byte so a node that passed on the C build
+/// still passes here.
+const PROBE_SUCCESS_MA: i32 = 50;
+
+/// Prints every node in the table and whether it exists on this device.
+///
+/// This is the port of the C `print_bypass_path_list()`, which checked
+/// `access(path, F_OK)` per row. The first Rust port printed a bare name/path
+/// dump with no existence check, so it said the same thing on every device and
+/// the user had no way to tell which node their hardware actually exposes.
+pub fn print_path_list() {
+    println!("[AZenith Available Bypass Path List]");
+    println!("{}", "-".repeat(72));
+    let mut found = 0usize;
+    for n in all_nodes() {
+        if std::path::Path::new(n.path).exists() {
+            println!("  {:<30} | {:<8} | {}", n.name, "FOUND", n.path);
+            found += 1;
+        } else {
+            println!("  {:<30} | {:<8} | {}", n.name, "absent", n.path);
+        }
+    }
+    println!("{}", "-".repeat(72));
+    println!("{found} of {} nodes present.", CHARGING_NODES.len());
+}
+
+/// Probes the table for a node whose write actually stops charging current.
+///
+/// This is the port of the C `check_bypass_compatibility()`. It is a *probe*,
+/// not a lookup: walk every node that exists, write `on_val`, sample the
+/// current once a second for [`PROBE_SAMPLE_SECS`], restore `off_val`, and
+/// accept the first node whose current dropped below [`PROBE_SUCCESS_MA`].
+///
+/// Writes to sysfs, so it is opt-in (`--checkbypasschg`) and never reached
+/// from the event loop. The caller must be root and the device should be
+/// charging, or every sample reads 0 and the first node falsely "wins".
+/// ponytail: 10 s per node x 78 nodes is a worst case of 13 minutes, exactly
+/// as the C behaved. Restoring `off_val` on every path (including success)
+/// means a killed probe cannot leave a node latched on.
+fn scan_for_working_node() -> Option<&'static ChargingNode> {
+    if !is_charging() {
+        println!("Charger not detected. Plug in first.");
+        return None;
+    }
+
+    let mut skipped = 0usize;
+    for node in all_nodes() {
+        if !std::path::Path::new(node.path).exists() {
+            skipped += 1;
+            continue;
+        }
+
+        println!("Testing node: {}", node.name);
+        if sysfs::write_sysfs(node.path, node.on_val, false).is_err() {
+            println!("  write failed, skipping");
+            skipped += 1;
+            continue;
+        }
+
+        let mut last_ma = 0i32;
+        for _ in 0..PROBE_SAMPLE_SECS {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            last_ma = read_current_ma();
+        }
+
+        // Restore before deciding, so a "successful" node is not left latched.
+        let _ = sysfs::write_sysfs(node.path, node.off_val, false);
+
+        if last_ma < PROBE_SUCCESS_MA {
+            println!("Found working node: {} ({last_ma} mA)", node.name);
+            println!("{skipped} nodes skipped.");
+            // Record it the way the rest of the module reads it back.
+            android_props::setprop(BYPASSPATH_PROP, node.name);
+            return Some(node);
+        }
+        println!(
+            "  current drop test failed for {} ({last_ma} mA)",
+            node.name
+        );
+    }
+
+    println!("No compatible bypass node found.");
+    println!("{skipped} of {} nodes skipped.", CHARGING_NODES.len());
+    // The C wrote these three on failure too, and the daemon reads them back on
+    // the next dynamic-bypass pass; leaving a stale node name set would have it
+    // keep targeting a node that just failed.
+    android_props::setprop(BYPASSPATH_PROP, UNSUPPORTED);
+    android_props::setprop("persist.sys.azenithconf.bypasschg", "0");
+    android_props::setprop("persist.sys.azenithconf.bypasschgthreshold", "20");
+    None
+}
+
+/// `true` when the device is charging, so a current-drop probe means something.
+fn is_charging() -> bool {
+    let Ok(s) = std::fs::read_to_string("/sys/class/power_supply/battery/status") else {
+        return false;
+    };
+    matches!(s.trim(), "Charging" | "Full")
+}
+
 /// Prints the compatibility report for `--checkbypasschg`.
 ///
 /// Mirrors the C: name the detected node, or say plainly that the device is not
 /// in the table rather than guessing.
 pub fn report_compatibility() {
-    match detect() {
+    // The C `check_bypass_compatibility()` was a *probe*, not a lookup: it
+    // walked all 78 nodes, wrote `on_val`, sampled the current for 10 s and
+    // accepted the first node that dropped it. The first Rust port only read
+    // the `bypasspath` property, so on a device where install-time detection
+    // never ran the property is empty and it reports "unsupported" for hardware
+    // it could have used. An unknown property is therefore a reason to *scan*,
+    // not to give up.
+    if let Ok(node) = active_node() {
+        println!(
+            "Bypass charging supported: {nname}\n  node:  {npath}\n  value: {non} on / {noff} off",
+            nname = node.name,
+            npath = node.path,
+            non = node.on_val,
+            noff = node.off_val
+        );
+        return;
+    }
+
+    match scan_for_working_node() {
         Some(n) => {
             println!(
                 "Bypass charging supported: {nname}\n  node:  {npath}\n  value: {non} on / {noff} off",
@@ -867,6 +1002,27 @@ mod tests {
             CHARGING_NODES.len(),
             78,
             "ChargingNodes.c has 78 entries; a silent count change means a lost row"
+        );
+    }
+
+    #[test]
+    fn compatibility_check_probes_rather_than_reads_a_property() {
+        // The C walked the table and measured the current. A port that only
+        // reads the `bypasspath` property reports "unsupported" on a device
+        // where install-time detection never ran — which is every device, on
+        // first call. Both branches are reachable from the report, so this
+        // fails if a later edit drops the probe and leaves the property
+        // lookup as the only path.
+        let src = include_str!("bypass_charge.rs");
+        let report = src
+            .split("pub fn report_compatibility()")
+            .nth(1)
+            .expect("report_compatibility must exist");
+        let report = report.split("\npub ").next().unwrap_or(report);
+        assert!(
+            report.contains("scan_for_working_node()"),
+            "report_compatibility must fall through to the filesystem probe \
+             when the bypasspath property is unset"
         );
     }
 
@@ -921,6 +1077,17 @@ mod tests {
         // No battery node on the host. The C returned 9999 here, which made the
         // `> 50` gate pass and engaged bypass on a device that was not charging.
         assert_eq!(read_current_ma(), 0);
+    }
+
+    #[test]
+    fn current_units_follow_the_c_magnitude_rule() {
+        // Measured on the X6739: `current_now` reads `-170800` while charging,
+        // i.e. microamps. Treating it as mA made every probe sample read
+        // 170800 and the `< 50` success gate could never fire.
+        assert_eq!(current_to_ma(-170800), 170, "microamps must normalise");
+        assert_eq!(current_to_ma(1200), 1, "above 1000 is microamps (C rule)");
+        assert_eq!(current_to_ma(850), 850, "at or below 1000 is already mA");
+        assert_eq!(current_to_ma(-300), 300, "sign is dropped, magnitude kept");
     }
 
     #[test]

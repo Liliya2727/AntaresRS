@@ -137,9 +137,7 @@ pub fn run(bin: &str, args: &[String]) -> i32 {
             0
         }
         c if is_cmd(c, "--bypasspathlist", "-bpl") => {
-            for n in crate::bypass_charge::all_nodes() {
-                println!("{}  {}", n.name, n.path);
-            }
+            crate::bypass_charge::print_path_list();
             0
         }
         c if is_cmd(c, "--rerun", "-rr") => {
