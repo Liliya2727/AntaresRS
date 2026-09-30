@@ -78,3 +78,26 @@ pub fn capture_any_status(cmd: &str) -> String {
 pub fn run(cmd: &str) -> bool {
     systemv(cmd) == 0
 }
+
+/// Single-quotes `s` for safe interpolation into a `/system/bin/sh -c` command.
+///
+/// Package names and app labels flow into `cmd notification` and friends. They
+/// come from the gamelist JSON and the companion's status file — both of which
+/// the Manager writes, and the Manager takes package names from installed apps.
+/// A label containing `;` or `$(...)` would otherwise be a shell injection into
+/// a root process. Android's `toybox sh` has no `$'...'` and no here-strings,
+/// so this stays POSIX: wrap in single quotes, and break out of the quoting to
+/// embed a literal single quote.
+pub fn escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}

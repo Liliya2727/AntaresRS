@@ -1,0 +1,22 @@
+[package]
+name = "azenith-daemon"
+description = "AZenith service daemon: event loop, CLI and profile orchestration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Cargo rejects `.` in a `[[bin]]` name, so the target stays `azenith-daemon`
+# and `compile_zip.sh` installs it as `sys.azenith-service`.
+[lib]
+name = "azenith_daemon"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+azenith-common = { path = "../azenith-common" }
+libc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+nix = { workspace = true }

@@ -12,22 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Shared property, sysfs, logging, path and shell helpers for every AZenith binary.
-//!
-//! Extracted from the C daemon's `AZenith.h` macros and the three duplicate
-//! `write_unlock_core()` copies in `binprofiles`/`binutils`/`binpreferenced`.
+//! Startup validation and crash-recovery state.
 
-pub mod android_props;
-pub mod config;
-pub mod logger;
-pub mod paths;
-pub mod shell;
-pub mod sysfs;
-pub mod version;
-
-/// Reads a whole small config file, trimmed, or `""` when it is absent/unreadable.
-pub fn read_trimmed(path: &str) -> String {
-    std::fs::read_to_string(path)
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default()
-}
+pub mod prop_validator;
+pub mod state_handler;

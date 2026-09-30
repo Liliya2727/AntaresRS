@@ -35,6 +35,24 @@ pub enum Level {
     Fatal = 4,
 }
 
+impl std::str::FromStr for Level {
+    /// Accepts the full names `binprofiles` and `binpreferenced` pass
+    /// (`"INFO"`, `"WARN"`, …) plus the single-letter and numeric forms a human
+    /// would type. Unrecognised input falls back to `Info` at the call site.
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_uppercase().as_str() {
+            "DEBUG" | "D" | "0" | "VERBOSE" => Ok(Self::Debug),
+            "INFO" | "I" | "1" => Ok(Self::Info),
+            "WARN" | "WARNING" | "W" | "2" => Ok(Self::Warn),
+            "ERROR" | "E" | "3" => Ok(Self::Error),
+            "FATAL" | "F" | "4" => Ok(Self::Fatal),
+            _ => Err(()),
+        }
+    }
+}
+
 impl Level {
     const fn short(self) -> char {
         match self {

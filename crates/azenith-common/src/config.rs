@@ -12,76 +12,82 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Config file readers (freqoffset, bypass, API/current_modes, etc.).
+//! Readers for the flat config files under `/data/adb/.config/AZenith/`.
 //!
-//! Mirrors the C `ConfigLoader.c` semantics exactly: strip trailing newline,
-//! trim whitespace, allow comments, return `""` on missing files. The original
-//! code did not validate the format — it only read the first line.
+//! Each file holds one scalar, newline-terminated. The C daemon read them with
+//! `fgets` + `trim_newline` and treated a failed open as "keep the previous
+//! value" — so a missing or momentarily-truncated file must return the default
+//! without disturbing the caller.
 
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-
-/// Reads the first non-empty, non-comment line from `path`. Returns `""` if
-/// the file does not exist, cannot be opened, or contains no usable line.
-/// Behaviour matches `ConfigLoader.c:read_config_value`.
+/// Reads one line, trimmed of trailing whitespace, or `""` if unreadable.
 pub fn read_line(path: &str) -> String {
-    let p = Path::new(path);
-    let Ok(f) = File::open(p) else {
-        return String::new();
-    };
-    let reader = BufReader::new(f);
-    for line in reader.lines().flatten() {
-        let mut s = line;
-        // Trim trailing CRLF (strip_newline equivalent)
-        if s.ends_with('\n') {
-            s.pop();
-        }
-        if s.ends_with('\r') {
-            s.pop();
-        }
-        // Comments: start with `#`
-        if let Some(hash) = s.find('#') {
-            s.truncate(hash);
-        }
-        let t = s.trim();
-        if t.is_empty() {
-            continue;
-        }
-        return t.to_string();
-    }
-    String::new()
+    std::fs::read_to_string(path)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
 }
 
-/// Reads an integer from `path`. Returns 0 if missing or malformed.
-pub fn read_int(path: &str) -> i32 {
-    read_line(path).parse::<i32>().unwrap_or(0)
+/// Reads one line as an integer, or `fallback` if missing or unparseable.
+pub fn read_int_or(path: &str, fallback: i32) -> i32 {
+    read_line(path).parse().unwrap_or(fallback)
 }
 
-/// Reads a boolean with `"1"`/`"0"` convention. Missing = false.
-pub fn read_bool_1(path: &str) -> bool {
-    read_line(path) == "1"
-}
-
-/// Writes a single line (no newline added) — the callers in C wrote their own
-/// newlines via `fprintf` in some cases and `echo` in others; this helper is
-/// intentionally minimal.
+/// Writes one scalar back, newline-terminated, matching what the Manager expects.
+///
+/// A missing parent directory is not an error here: the daemon writes into
+/// directories `customize.sh` created at install, and a failure should be
+/// visible in the log rather than silently ignored.
 pub fn write_line(path: &str, value: &str) -> std::io::Result<()> {
-    std::fs::write(Path::new(path), value.as_bytes())
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{value}\n"))
 }
 
-/// Atomic write by rename (best-effort) to match the "tmp + renameTo" pattern
-/// used by the Java side; the C side did not always use rename, but config
-/// files are small. Not strictly required to match C byte-for-byte.
-pub fn write_line_atomic(path: &str, value: &str) -> std::io::Result<()> {
-    let p = Path::new(path);
-    let dir = p.parent().unwrap_or_else(|| Path::new("."));
-    let tmp = dir.join(format!(
-        ".{}.tmp.{}",
-        p.file_name().and_then(|x| x.to_str()).unwrap_or("tmp"),
-        std::process::id()
-    ));
-    std::fs::write(&tmp, value.as_bytes())?;
-    std::fs::rename(&tmp, p)?;
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        // Under the project dir, not `std::env::temp_dir()`: /tmp is a
+        // RAM-backed tmpfs on this host.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/test-scratch")
+            .to_path_buf();
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        let p = dir.join(format!("config-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    #[test]
+    fn trailing_newline_is_stripped() {
+        let p = scratch("trim");
+        std::fs::write(&p, "  900 \n").unwrap();
+        assert_eq!(read_line(p.to_str().unwrap()), "900");
+    }
+
+    #[test]
+    fn a_missing_file_reads_as_empty_not_an_error() {
+        // The C kept the previous value on a failed open; returning "" lets the
+        // caller distinguish "absent" from "changed to empty".
+        assert_eq!(read_line("/nonexistent/azenith/freqoffset"), "");
+    }
+
+    #[test]
+    fn int_read_falls_back_instead_of_zeroing() {
+        let p = scratch("int");
+        std::fs::write(&p, "not-a-number\n").unwrap();
+        let path = p.to_str().unwrap();
+        assert_eq!(read_int_or(path, -1), -1);
+        std::fs::write(&p, "42\n").unwrap();
+        assert_eq!(read_int_or(path, -1), 42);
+    }
+
+    #[test]
+    fn write_line_round_trips_with_a_newline() {
+        let p = scratch("write");
+        let path = p.to_str().unwrap();
+        write_line(path, "7").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "7\n");
+    }
 }

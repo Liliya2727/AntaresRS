@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/azenith-common",
+    "crates/azenith-daemon",
 ]
 
 [workspace.package]
