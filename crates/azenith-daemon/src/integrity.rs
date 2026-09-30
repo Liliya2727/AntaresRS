@@ -122,11 +122,15 @@ mod tests {
     }
 
     #[test]
-    fn an_uninjected_build_is_flagged() {
-        // Built without AZENITH_VERSION: the placeholder sentinel must be
-        // detectable, otherwise a developer builds a daemon that hard-exits on
-        // every device and has no warning.
-        assert!(is_uninjected(), "cargo test builds without AZENITH_VERSION");
+    fn the_placeholder_sentinel_is_detectable() {
+        // The detector, not the ambient build. This used to assert
+        // `is_uninjected()`, which held only while the version came from
+        // AZENITH_VERSION (unset during `cargo test`). build.rs now derives it
+        // from git, so on a checkout the build is correctly stamped and the
+        // old assertion failed. What actually has to be true is that a
+        // `.placeholder` build is recognisable, or a local build still ships a
+        // daemon that hard-exits on install with no warning.
+        assert_eq!(is_uninjected(), azenith_common::version::is_placeholder());
     }
 
     #[test]
