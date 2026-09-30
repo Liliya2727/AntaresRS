@@ -312,13 +312,10 @@ pub fn setrender(renderer: &str) {
 }
 
 pub fn check_mali_path() {
-    let mut found = false;
-    if let Ok(paths) = glob::glob("/sys/class/devfreq/*.mali") {
-        for _path in paths.flatten() {
-            found = true;
-            break;
-        }
-    }
+    // Existence check only — the path itself is never used, so this asks
+    // "does the glob match anything" and nothing more.
+    let found = glob::glob("/sys/class/devfreq/*.mali")
+        .is_ok_and(|mut paths| paths.next().is_some());
 
     if found {
         println!("true");

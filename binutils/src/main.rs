@@ -14,32 +14,12 @@
 // limitations under the License.
 //
 
-mod utils;
+// Thin runner: all logic lives in the `azenith_utilityconf` lib so the unified
+// sys.azenith-service can call `run()` directly (plan Q1, Option A) instead of
+// fork+exec'ing this binary. The `_` passthrough arm still shells out for an
+// unmatched argv[1]; the unified binary drops that.
 
-use std::env;
-use std::process::Command;
-use utils::*;
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() > 1 {
-        let function = args[1].as_str();
-                match function {
-            "setsgov" => if args.len() > 2 { setsgov(&args[2]) },
-            "setsIO" => if args.len() > 2 { sets_io(&args[2]) },
-            "setsMaliGov" => if args.len() > 2 { sets_mali_gov(&args[2]) },
-            "setthermalcore" => if args.len() > 2 { setthermalcore(&args[2]) },
-            "checkmalipath" => check_mali_path(),
-            "FSTrim" => fstrim(),
-            "enableDND" => enable_dnd(),
-            "disableDND" => disable_dnd(),
-            "setrefreshrates" => if args.len() > 2 { setrefreshrates(&args[2]) },
-            "restartservice" => restartservice(),
-            "setrender" => if args.len() > 2 { setrender(&args[2]) },
-            _ => {
-                let _ = Command::new(function).args(&args[2..]).status();
-            }
-        }
-    }
+fn main() -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    std::process::ExitCode::from(azenith_utilityconf::dispatch(&args) as u8)
 }

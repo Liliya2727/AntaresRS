@@ -176,27 +176,30 @@ fn run_gated(cmd: &str, args: &[String]) -> i32 {
     }
 }
 
-/// Routes a subcommand to the crate that owns it.
+/// Routes a subcommand to the module that owns it.
 ///
-/// Until those crates are folded in as libraries, the command is forwarded to
-/// the installed binary by name, which is exactly what the C daemon did.
+/// Direct call, not fork+exec: this is the whole point of plan Q1 (Option A).
+/// The C daemon had to spawn `sys.azenith-utilityconf` and friends because it
+/// could not call them; now every one of those crates is a library linked into
+/// this binary, so the round trip is a function call.
 fn dispatch_crate(which: &str, args: &[String]) -> i32 {
-    let bin = match which {
-        "utils" => "sys.azenith-utilityconf",
-        "profiles" => "sys.azenith-profilesettings",
-        "thermal" => "sys.azenith-rianixiathermalcore",
-        "prefs" => "sys.azenith-preferencedtweaks",
-        "preload" => "sys.azenith-preloadbin",
-        _ => return 1,
-    };
-    let mut cmd = bin.to_string();
-    for a in args {
-        // Subcommand arguments are validated by the receiving crate; the only
-        // untrusted one is a package name, which is single-quoted here.
-        cmd.push(' ');
-        cmd.push_str(&shell::escape(a));
+    match which {
+        "utils" => azenith_utilityconf::dispatch(args),
+        "profiles" => azenith_profilesettings::run(args),
+        "prefs" => azenith_preferencedtweaks::run(args),
+        "thermal" => rianixia_thermalcore::run(args),
+        // Still a separate process, by design (plan Q3): it `dlopen`s arbitrary
+        // game `.so` files and must not pollute the daemon's address space.
+        "preload" => {
+            let mut cmd = "sys.azenith-preloadbin".to_string();
+            for a in args {
+                cmd.push(' ');
+                cmd.push_str(&shell::escape(a));
+            }
+            shell::systemv(&cmd)
+        }
+        _ => 1,
     }
-    shell::systemv(&cmd)
 }
 
 fn handle_profile(args: &[String]) -> i32 {

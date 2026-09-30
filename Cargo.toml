@@ -3,7 +3,16 @@ resolver = "2"
 members = [
     "crates/azenith-common",
     "crates/azenith-daemon",
+    # The four pre-existing standalone crates, folded in as workspace members
+    # (Phase 2). Their logic is unchanged; only the manifest is rewritten to
+    # use workspace lints and dependency versions.
+    "thermalcore",
+    "binprofiles",
+    "binutils",
+    "binpreferenced",
 ]
+# They are inside the workspace directory, so Cargo would otherwise refuse them.
+exclude = []
 
 [workspace.package]
 edition = "2024"
@@ -29,15 +38,14 @@ suspicious = { level = "warn", priority = -1 }
 style = { level = "warn", priority = -1 }
 
 # ponytail: opt-level 'z' everywhere except thermalcore, which is compute-bound.
-# opt-level 3 there buys real FLOPS; 'z' on the daemon only saves bytes we don't
-# care about (the APK dwarfs the binaries).
-#
-# The per-package thermalcore override is intentionally absent until Phase 3
-# moves that crate in — Cargo warns about a profile spec that matches no member
-# on every single build, which is noise that hides real warnings.
+# opt-level 3 there buys real FLOPS; 'z' on the daemon only saves bytes the
+# module zip does not meaningfully care about.
 [profile.release]
 opt-level = 'z'
 lto = true
 codegen-units = 1
 panic = 'abort'
 strip = true
+
+[profile.release.package.rianixia-thermalcore]
+opt-level = 3

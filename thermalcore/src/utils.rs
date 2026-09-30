@@ -1,11 +1,9 @@
 use std::collections::VecDeque;
-use std::ffi::{ CString, CStr };
-use std::os::raw::{ c_char, c_uchar };
 use nix::time::{ clock_gettime, ClockId };
 use std::fs;
 use std::path::PathBuf;
 
-use super::android_ffi::__system_property_get; // Import FFI
+use super::android_ffi::read_property;
 use super::constants::*; // Import constants
 
 // ============================================================================
@@ -23,25 +21,7 @@ pub fn get_monotonic_time() -> u64 {
 // ============================================================================
 
 pub fn get_system_property(key: &str, default: &str) -> String {
-    let prop_name = CString::new(key).unwrap();
-    let mut value = [0u8; 92];
-
-    unsafe {
-        let len = __system_property_get(
-            prop_name.as_ptr() as *const c_uchar,
-            value.as_mut_ptr() as *mut c_uchar
-        );
-
-        if len > 0 {
-            let val_str = CStr::from_ptr(value.as_ptr() as *const c_char)
-                .to_string_lossy()
-                .into_owned();
-            if !val_str.is_empty() {
-                return val_str;
-            }
-        }
-    }
-    default.to_string()
+    read_property(key).unwrap_or_else(|| default.to_string())
 }
 
 pub fn get_data_path() -> PathBuf {

@@ -15,6 +15,7 @@
 //
 
 use std::ffi::CString;
+#[cfg(target_os = "android")]
 use std::os::raw::c_char;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -30,6 +31,10 @@ const ANDROID_LOG_INFO:  i32 = 4;
 const ANDROID_LOG_WARN:  i32 = 5;
 const ANDROID_LOG_ERROR: i32 = 6;
 
+// `#[link]` applies crate-wide, so an unconditional attribute makes the *host*
+// build fail with "unable to find library -llog" the moment this crate is a
+// workspace member and its test target links. Android-only.
+#[cfg(target_os = "android")]
 #[link(name = "log")]
 unsafe extern "C" {
     fn __android_log_write(prio: i32, tag: *const c_char, text: *const c_char) -> i32;
@@ -42,9 +47,13 @@ fn android_log(priority: i32, tag: &str, message: &str) {
     let Ok(c_tag) = CString::new(safe_tag) else { return };
     let Ok(c_msg) = CString::new(safe_msg) else { return };
 
+    // Host builds have no liblog; the file logger above is the whole story there.
+    #[cfg(target_os = "android")]
     unsafe {
         __android_log_write(priority, c_tag.as_ptr(), c_msg.as_ptr());
     }
+    #[cfg(not(target_os = "android"))]
+    let _ = (&c_tag, &c_msg, priority);
 }
 
 fn timestamp() -> String {

@@ -14,67 +14,12 @@
 // limitations under the License.
 //
 
-mod prefs;
-mod utils;
+// Thin runner: all logic lives in the `azenith_preferencedtweaks` lib so the
+// unified sys.azenith-service can call `run()` directly (plan Q1, Option A).
+// The ppid guard that used to live here is gone — it only existed because the
+// C daemon had to fork+exec; `verify_caller()` is kept in the lib for triage.
 
-use std::env;
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use prefs::*;
-use utils::*;
-
-fn get_parent_pid() -> Option<u32> {
-    fs::read_to_string("/proc/self/stat")
-        .ok()
-        .and_then(|stat| {
-            stat.split_whitespace()
-                .nth(3)
-                .and_then(|ppid| ppid.parse::<u32>().ok())
-        })
-}
-
-fn get_process_cmdline(pid: u32) -> Option<String> {
-    fs::read_to_string(format!("/proc/{}/cmdline", pid))
-        .ok()
-        .map(|s| s.replace('\0', " ").trim().to_string())
-}
-
-fn verify_caller() -> bool {
-    if let Some(ppid) = get_parent_pid() {
-        if let Some(cmdline) = get_process_cmdline(ppid) {
-            return cmdline.contains("sys.azenith-service") || cmdline.contains("sys.azenith");
-        }
-    }
-    false
-}
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if !verify_caller() {
-        eprintln!("\x1b[31mError: This utility can only be called by sys.azenith-service\x1b[0m");
-        std::process::exit(1);
-    }
-
-    init_debugmode();
-
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "apply" | "prefs" | "preferenced" => {
-                prefsettings();
-            }
-            _ => {
-                if Path::new(&args[1]).exists() || args[1].contains('.') {
-                    let _ = Command::new(&args[1])
-                        .args(&args[2..])
-                        .status();
-                }
-            }
-        }
-    } else {
-        prefsettings();
-    }
-
-    let _ = Command::new("sync").status();
+fn main() -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    std::process::ExitCode::from(azenith_preferencedtweaks::run(&args) as u8)
 }

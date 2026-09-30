@@ -14,11 +14,7 @@ chrono = { version = "0.4", features = ["serde"] }
 sysinfo = "0.37.2"
 serde_json = "1.0"
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
+# [profile.release] omitted: workspace-wide only.
 
 [features]
 simulator = []

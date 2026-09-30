@@ -4,12 +4,18 @@ version = "1.0.0"
 edition = "2024"
 description = "AZenith Utility binaries"
 
-[dependencies]
-glob = "0.3.1"
+# [profile.release] intentionally omitted: profiles are workspace-wide only
+# (a per-crate [profile.*] in a member is ignored and emits a warning).
 
-[profile.release]
-opt-level = 'z'
-lto = true
-codegen-units = 1
-panic = 'abort'
-strip = true
+[lib]
+name = "azenith_utilityconf"
+path = "src/lib.rs"
+
+[[bin]]
+# Cargo rejects `.` in [[bin]] names, so the on-device name sys.azenith-utilityconf
+# is applied at packaging time, not here.
+name = "utilityconf"
+path = "src/main.rs"
+
+[dependencies]
+glob = { workspace = true }

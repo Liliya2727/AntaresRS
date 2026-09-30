@@ -15,7 +15,16 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
+# Plan Q1 (Option A): the four former standalone binaries are libraries now, so
+# `sys.azenith-service <subcommand>` is a direct call instead of a fork+exec.
+# This also makes their ppid "is my parent sys.azenith-service" guards dead code.
+# `thermalcore` stays a binary too (plan: keep its own long-lived process), but
+# its run loop is a lib fn so the daemon can start it if that ever changes.
 azenith-common = { path = "../azenith-common" }
+azenith-profilesettings = { path = "../../binprofiles" }
+azenith-utilityconf = { path = "../../binutils" }
+azenith-preferencedtweaks = { path = "../../binpreferenced" }
+rianixia-thermalcore = { path = "../../thermalcore" }
 libc = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
