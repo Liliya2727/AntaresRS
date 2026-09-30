@@ -275,9 +275,12 @@ fi
 # binprofiles/binpreferenced used to be invoked as bare names via the $PATH
 # fixup in systemv(). thermalcore and preloadbin are real binaries, so they
 # get real links.
-BIN_PATH="$MODPATH/system/bin"
-for name in sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferencedtweaks; do
-	ln -sf "$BIN_PATH/sys.azenith-service" "$MODPATH/system/bin/$name"
+# Relative targets, not $MODPATH: on KernelSU/APatch MODPATH is the staging
+# dir /data/adb/modules_update/AZenith, which boot clears -- an absolute
+# $MODPATH link dangles on the first boot. The link sits next to its target,
+# so a bare filename resolves wherever the module ends up.
+for name in sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferredtweaks; do
+	ln -sf sys.azenith-service "$MODPATH/system/bin/$name"
 done
 
 # Apply Tweaks Based on Chipset
