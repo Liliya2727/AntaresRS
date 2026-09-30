@@ -74,11 +74,10 @@ fn derive_version() -> String {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, ()> {
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty())
-        .map_err(|_| ())
+    let out = Command::new("git").args(args).current_dir(dir).output().map_err(|_| ())?;
+    if !out.status.success() {
+        return Err(());
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() { Err(()) } else { Ok(text) }
 }
