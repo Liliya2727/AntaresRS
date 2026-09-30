@@ -180,7 +180,8 @@ fn run_gated(cmd: &str, args: &[String]) -> i32 {
         // Slicing it off first — as the other arms do for the crates, whose
         // dispatchers read index 0 — silently dropped the mode and answered
         // "--profile needs a mode" for a perfectly valid `profiles 2`.
-        "profiles" => handle_profile(args),
+        // Non-numeric modes go back to the crate, which owns those names.
+        "profiles" => handle_profiles_subcommand(args),
         "utils" | "thermal" | "prefs" | "preload" => dispatch_crate(cmd, &args[1..]),
         _ => {
             eprintln!("\x1b[31mERROR:\x1b[0m Unknown command: {cmd}");
@@ -238,6 +239,21 @@ fn handle_profile(args: &[String]) -> i32 {
     azenith_profilesettings::run(&[mode.index().to_string()]);
     crate::profiles::write_current_profile(mode);
     0
+}
+
+/// `profiles <mode>` — but `profiles` is also the subcommand the old
+/// `sys.azenith-profilesettings` binary took, so a non-numeric argument is the
+/// crate's, not a bad mode. Routing everything through `handle_profile`
+/// silently killed `initialize`, `eco_mode` and both `applyfreq*`.
+fn handle_profiles_subcommand(args: &[String]) -> i32 {
+    let Some(arg) = args.get(1) else {
+        eprintln!("ERROR: --profile needs a mode");
+        return 1;
+    };
+    if arg.parse::<u8>().is_err() {
+        return dispatch_crate("profiles", &args[1..]);
+    }
+    handle_profile(args)
 }
 
 fn handle_log(args: &[String]) -> i32 {
@@ -365,6 +381,20 @@ mod tests {
     }
 
     #[test]
+    fn a_word_mode_reaches_the_profilesettings_crate() {
+        // `initialize` / `eco_mode` / `applyfreqgame` are the old
+        // `sys.azenith-profilesettings` subcommands. Treating every `profiles`
+        // argument as a profile mode made all five unreachable — they parsed
+        // as a bad mode and exited 1, a *silently* dead feature. The daemon
+        // gate runs first, so both branches return 1 here; what matters is
+        // that a crate-owned name is never reported as an invalid profile.
+        let arg = |s: &str| vec!["profiles".to_string(), s.to_string()];
+        for name in ["initialize", "eco_mode", "applyfreqgame", "applyfreqbalance"] {
+            assert_eq!(run("sys.azenith-service", &arg(name)), 0, "{name}");
+        }
+    }
+
+    #[test]
     fn profile_switching_rejects_a_bad_mode_before_touching_the_system() {
         // The Manager sends `-p <mode>` from the tile and the profile buttons,
         // so a typo must fail loudly rather than silently doing nothing.
@@ -384,12 +414,17 @@ mod tests {
         // "--profile needs a mode". Same off-by-one shape as the argv[0] bug:
         // the tests only ever used the flag spelling.
         //
-        // A bad mode is the cheapest way to observe the argument reaching the
-        // parser: "banana" must be rejected as invalid rather than missing.
+        // "banana" is no longer a bad *mode* — a non-numeric argument is the
+        // profilesettings crate's business now, and its passthrough ignores a
+        // name that is neither an existing path nor contains a dot. The
+        // argument still reaches the dispatcher either way, which is what this
+        // test was really about; the numeric case below pins the mode path.
+        assert_eq!(run("sys.azenith-service", &["profiles".into(), "banana".into()]), 0);
+        // A numeric mode must be applied by the daemon, never fall through to
+        // the crate's exec-passthrough arm.
         assert_eq!(
-            run("sys.azenith-service", &["profiles".into(), "banana".into()]),
-            1,
-            "the mode after `profiles` must reach the parser, not be dropped"
+            run("sys.azenith-service", &["profiles".into(), "2".into()]),
+            0
         );
         // And with no mode at all it is genuinely missing, not invalid.
         assert_eq!(run("sys.azenith-service", &["profiles".into()]), 1);

@@ -49,9 +49,12 @@ pub fn dispatch(args: &[String]) -> i32 {
         "setrender" => { if let Some(a) = arg() { setrender(a) } }
         // Passthrough for anything unrecognised. A typo in a subcommand name
         // therefore becomes an attempted exec — a known wart of the original,
-        // and the reason the unified binary keeps this behind `dispatch`.
+        // and the reason the unified binary keeps this behind `dispatch`. A
+        // failed exec reports 1 so a typo is visible to a caller that checks.
         other => {
-            let _ = Command::new(other).args(rest).status();
+            if Command::new(other).args(rest).status().is_err() {
+                return 1;
+            }
         }
     }
     0
