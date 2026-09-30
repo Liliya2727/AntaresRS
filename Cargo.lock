@@ -47,6 +47,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "azenith-preload"
+version = "1.0.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "azenith-profilesettings"
 version = "1.0.0"
 dependencies = [

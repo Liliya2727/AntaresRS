@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/azenith-common",
     "crates/azenith-daemon",
+    "crates/azenith-preload",
     # The four pre-existing standalone crates, folded in as workspace members
     # (Phase 2). Their logic is unchanged; only the manifest is rewritten to
     # use workspace lints and dependency versions.

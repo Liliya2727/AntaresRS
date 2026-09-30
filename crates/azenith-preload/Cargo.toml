@@ -1,0 +1,20 @@
+[package]
+name = "azenith-preload"
+description = "Page-cache preloader: walks a game's native libraries and faults them in"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Separate binary, by design (plan Q3): it mmap+touches every page of every
+# native library in a game, which would thrash the daemon's own address space.
+# Cargo rejects `.` in `[[bin]]` names, so `compile_zip.sh` installs this as
+# `sys.azenith-preloadbin`.
+[[bin]]
+name = "preloadbin"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = { workspace = true }

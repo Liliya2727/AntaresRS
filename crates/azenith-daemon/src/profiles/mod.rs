@@ -52,11 +52,39 @@ pub fn apply(daemon: &mut Daemon, mode: ProfileMode) {
         crate::utility::toast(&format!("Switched to {previous} -> {mode}"));
     }
 
-    // ponytail: fork+exec for now; becomes a direct call once binprofiles is a
-    // lib crate in this workspace.
-    let _ = shell::systemv(&format!("sys.azenith-service profiles {}", mode.index()));
+    // Direct call. This used to re-exec `sys.azenith-service profiles N` on
+    // itself, which the C did because it could not call Rust; now
+    // `binprofiles` is a linked library and the round trip is a function call.
+    azenith_profilesettings::run(&[mode.index().to_string()]);
 
     write_current_profile(mode);
+    maybe_start_preload(daemon);
+}
+
+/// Spawns the async preload worker if preloading is on for this app or globally.
+///
+/// Mirrors `SystemProfiles.c:84-113`, including its two independent switches:
+/// the per-app `game_preload` tri-state and the global `APreload` property.
+/// Detached, so the 5-second settle in `game_preload` does not stall the
+/// event loop.
+fn maybe_start_preload(daemon: &Daemon) {
+    let Some(package) = daemon.gamestart.as_deref() else {
+        return;
+    };
+    let global = android_props::is_true(&android_props::getprop(
+        "persist.sys.azenithconf.APreload",
+    ));
+    let per_app = daemon
+        .opts_for(package)
+        .is_some_and(|o| !GameConfig::is_default(&o.game_preload));
+    if !per_app && !global {
+        return;
+    }
+
+    let package = package.to_string();
+    let _ = std::thread::Builder::new()
+        .name("async-preload".into())
+        .spawn(move || crate::preload::game_preload(&package));
 }
 
 /// Records the active profile in both the root-side and app-readable files.

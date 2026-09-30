@@ -32,6 +32,7 @@ pub mod daemon;
 pub mod handlers;
 pub mod integrity;
 pub mod pid_tracker;
+mod preload;
 pub mod priority;
 pub mod profiles;
 pub mod shutdown;

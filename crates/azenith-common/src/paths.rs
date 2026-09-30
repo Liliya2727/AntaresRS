@@ -50,6 +50,14 @@ pub const DAEMON_STATE_FILE: &str = "/data/adb/.config/AZenith/daemon_state";
 pub const KSU_BIN: &str = "/data/adb/ksu/bin";
 pub const AP_BIN: &str = "/data/adb/ap/bin";
 
+/// The page-touching preload binary, spawned as a separate process (plan Q3).
+///
+/// Spelled out as an absolute path rather than the bare `sys.azenith-preloadbin`
+/// the C used: `preload.rs` spawns it with `Command::new`, which does not go
+/// through `systemv()` and therefore gets no `PATH` fixup. An absolute path also
+/// works on plain Magisk, where `customize.sh` creates no symlink at all.
+pub const PRELOAD_BIN: &str = "/data/adb/modules/AZenith/system/bin/sys.azenith-preloadbin";
+
 /// `PATH` handed to every child process. Matches the C `MY_PATH` macro
 /// (`AZenith.h:84-86`) — `systemv()` gives children nothing else.
 pub const MY_PATH: &str = "/system/bin:/system/xbin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/debug_ramdisk:/sbin:/sbin/su:/su/bin:/su/xbin:/data/data/com.termux/files/usr/bin";
