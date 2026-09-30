@@ -185,11 +185,11 @@ case $ARCH in
 esac
 
 echo "- Extracting binaries for $ARCH_TMP..."
+# Only three real binaries ship now. The subcommand names are symlinks to the
+# daemon, which dispatches on argv[0] (plan Q1, Option A), so they are created
+# in the symlink block below rather than extracted.
 extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-service" "$TMPDIR"
-extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-profilesettings" "$TMPDIR"
 extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-rianixiathermalcore" "$TMPDIR"
-extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-utilityconf" "$TMPDIR"
-extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-preferencedtweaks" "$TMPDIR"
 extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-preloadbin" "$TMPDIR"
 cp "$TMPDIR/libs/$ARCH_TMP/"* "$MODPATH/system/bin/"
 rm -rf "$TMPDIR/libs"
@@ -261,14 +261,24 @@ if [ "$KSU" = "true" ] || [ "$APATCH" = "true" ]; then
 			echo "- Creating symlink in $dir"
 			ln -sf "$BIN_PATH/sys.azenith-service" "$dir/sys.azenith-service"
 			ln -sf "$BIN_PATH/sys.azenith-service" "$dir/zx" # Binary calls for CLI
-			ln -sf "$BIN_PATH/sys.azenith-profilesettings" "$dir/sys.azenith-profilesettings"
-			ln -sf "$BIN_PATH/sys.azenith-utilityconf" "$dir/sys.azenith-utilityconf"
-			ln -sf "$BIN_PATH/sys.azenith-preferencedtweaks" "$dir/sys.azenith-preferencedtweaks"
+			ln -sf "$BIN_PATH/sys.azenith-service" "$dir/sys.azenith-profilesettings"
+			ln -sf "$BIN_PATH/sys.azenith-service" "$dir/sys.azenith-utilityconf"
+			ln -sf "$BIN_PATH/sys.azenith-service" "$dir/sys.azenith-preferencedtweaks"
 			ln -sf "$BIN_PATH/sys.azenith-preloadbin" "$dir/sys.azenith-preloadbin"
-            ln -sf "$BIN_PATH/sys.azenith-rianixiathermalcore" "$dir/sys.azenith-rianixiathermalcore"
+			ln -sf "$BIN_PATH/sys.azenith-rianixiathermalcore" "$dir/sys.azenith-rianixiathermalcore"
 		}
 	done
 fi
+
+# The three in-process subcommand names have to resolve on *every* framework,
+# not just KSU/APatch: the daemon dispatches on argv[0] (plan Q1, Option A), and
+# binprofiles/binpreferenced used to be invoked as bare names via the $PATH
+# fixup in systemv(). thermalcore and preloadbin are real binaries, so they
+# get real links.
+BIN_PATH="$MODPATH/system/bin"
+for name in sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferencedtweaks; do
+	ln -sf "$BIN_PATH/sys.azenith-service" "$MODPATH/system/bin/$name"
+done
 
 # Apply Tweaks Based on Chipset
 echo "- Checking device soc"
