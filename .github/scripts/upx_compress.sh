@@ -30,7 +30,10 @@ PROFILE="${1:-release}"
 # This script lives in .github/scripts/, so the repo root is two levels up.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-NDK_ROOT="${ANDROID_NDK_ROOT:-${NDK_ROOT:-/opt/android-sdk/ndk/28.2.13676358}}"
+# nttld/setup-ndk exports ANDROID_NDK_HOME (and sometimes only
+# ANDROID_NDK_LATEST_HOME), and older hosts set ANDROID_NDK_ROOT. Check all
+# three before falling back to the local default.
+NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-${NDK_ROOT:-/opt/android-sdk/ndk/28.2.13676358}}}}"
 STRIP_BIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
 
 # ABI target-triple -> the zip subdirectory `compile_zip.sh` writes into.

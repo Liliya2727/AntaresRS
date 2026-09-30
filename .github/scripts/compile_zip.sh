@@ -88,10 +88,29 @@ collect_rust_bins armv7-linux-androideabi mainfiles/libs/armeabi-v7a
 # The version is baked in by crates/azenith-common/build.rs, which derives it
 # from the same version/version_type/git inputs used above. If the two ever
 # disagree, the build step and the packaging step ran against different trees.
+# upx_compress.sh may have packed these binaries, and `strings` cannot see
+# through UPX: it finds zero occurrences of the version in a packed file even
+# though the string is still in .rodata. Unpack a scratch copy first rather
+# than gating on a string that only exists pre-compression.
+built_version() {
+	bin="$1"
+	# upx -q still prints its banner on stdout in 5.x, so silence both streams:
+	# anything leaking here lands in the caller's command substitution.
+	if upx -t -q "$bin" >/dev/null 2>&1; then
+		tmp="$(mktemp -d)"
+		cp "$bin" "$tmp/probe"
+		upx -d -q "$tmp/probe" >/dev/null 2>&1
+		strings "$tmp/probe" | grep -oE "$version \([0-9]+-[0-9a-f]+-[^)]*\)" | head -n1
+		rm -rf "$tmp"
+	else
+		strings "$bin" | grep -oE "$version \([0-9]+-[0-9a-f]+-[^)]*\)" | head -n1
+	fi
+}
+
+packaged="$version ($release_code)"
 for abi in arm64-v8a armeabi-v7a; do
 	bin="mainfiles/libs/$abi/sys.azenith-service"
-	built="$(strings "$bin" | grep -oE "$version \([0-9]+-[0-9a-f]+-[^)]*\)" | head -n1)"
-	packaged="$version ($release_code)"
+	built="$(built_version "$bin")"
 	if [ "$built" != "$packaged" ]; then
 		echo "ERROR: $bin was built with version '$built' but module.prop says '$packaged'"
 		exit 1
