@@ -134,6 +134,39 @@ elif [ -n "$APK_PATH_DEBUG" ]; then
     echo "APK found at $APK_PATH_DEBUG and copied to mainfiles successfully."
 else
     echo "ERROR: No APK found!"
+    exit 1
+fi
+
+# The APK carries its own versionCode, and the Manager shows "update
+# available" by comparing it against the module's. A stale APK therefore makes
+# the app report an older build than the module it shipped inside — which is
+# exactly what a human sees as "my app says 1864 but latest is 1867". The
+# Gradle step runs before this one in CI, so a mismatch means the APK was not
+# rebuilt for this version: fail instead of shipping a misleading package.
+#
+# Read the expected value back out of module.prop rather than reusing
+# $version_code: that is the value the Manager actually compares against, and
+# it is already final at this point in the script.
+MODULE_VERSION_CODE=$(sed -n 's/^versionCode=//p' mainfiles/module.prop)
+# aapt2 is the only reliable reader here. `strings` on the manifest does not
+# surface the attribute — AndroidManifest.xml is binary XML, and the value is
+# an int, not a string pool entry.
+AAPT2=$(ls "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools/"*/aapt2 2>/dev/null | sort -V | tail -n 1)
+if [ -z "$AAPT2" ]; then
+    echo "WARNING: aapt2 not found; skipping the APK versionCode check"
+else
+    APK_VERSION_CODE=$("$AAPT2" dump badging mainfiles/AZenith.apk 2>/dev/null |
+        sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+    if [ -z "$APK_VERSION_CODE" ]; then
+        echo "ERROR: aapt2 could not read a versionCode out of the APK"
+        exit 1
+    elif [ "$APK_VERSION_CODE" != "$MODULE_VERSION_CODE" ]; then
+        echo "ERROR: APK versionCode=$APK_VERSION_CODE but module versionCode=$MODULE_VERSION_CODE"
+        echo "       Rebuild the Manager (./gradlew assembleDebug) before zipping."
+        exit 1
+    else
+        echo "APK versionCode matches module versionCode=$MODULE_VERSION_CODE"
+    fi
 fi
 
 # Parse version info to module prop

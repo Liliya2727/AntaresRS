@@ -8,3 +8,15 @@ sys.azenith-service
 # Gradle build cache
 .gradle/
 build/
+
+# Staged by compile_zip.sh at packaging time, never source. AZenith.apk alone
+# is ~85 MB, so tracking it would bloat the repository permanently.
+mainfiles/AZenith.apk
+mainfiles/AZenith.apk.sha256
+mainfiles/*.sha256
+mainfiles/META-INF/
+mainfiles/LICENSE
+mainfiles/NOTICE.md
+mainfiles/azenithApplist.json
+mainfiles/system/bin/
+manager/app/src/main/assets/changelog.md
