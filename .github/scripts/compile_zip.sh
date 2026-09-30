@@ -81,6 +81,24 @@ collect_rust_bins() {
 collect_rust_bins aarch64-linux-android mainfiles/libs/arm64-v8a
 collect_rust_bins armv7-linux-androideabi mainfiles/libs/armeabi-v7a
 
+# The daemon hard-exits at boot if its compiled-in MODULE_VERSION does not
+# equal module.prop's `version=`. That check fires on the *device*, hours later
+# and with no useful log, so verify the agreement here first.
+#
+# The version is baked in by crates/azenith-common/build.rs, which derives it
+# from the same version/version_type/git inputs used above. If the two ever
+# disagree, the build step and the packaging step ran against different trees.
+for abi in arm64-v8a armeabi-v7a; do
+	bin="mainfiles/libs/$abi/sys.azenith-service"
+	built="$(strings "$bin" | grep -oE "$version \([0-9]+-[0-9a-f]+-[^)]*\)" | head -n1)"
+	packaged="$version ($release_code)"
+	if [ "$built" != "$packaged" ]; then
+		echo "ERROR: $bin was built with version '$built' but module.prop says '$packaged'"
+		exit 1
+	fi
+done
+echo ">>> version agreement OK: $version ($release_code)"
+
 # Other Files
 cp azenithApplist.json mainfiles/
 cp LICENSE mainfiles/ 2>/dev/null
