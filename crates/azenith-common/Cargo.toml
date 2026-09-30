@@ -1,0 +1,12 @@
+[package]
+name = "azenith-common"
+description = "Shared property, sysfs, logging and path helpers for AZenith"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = { workspace = true }

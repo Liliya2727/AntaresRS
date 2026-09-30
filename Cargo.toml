@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/azenith-common",
+]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+version = "1.0.0"
+
+[workspace.dependencies]
+# NOTE: `nix` has no `fcntl` feature — requesting it fails to resolve.
+nix = { version = "0.30", features = ["poll", "inotify", "signal", "fs", "process", "user"] }
+inotify = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "2.0"
+glob = "0.3"
+libc = "0.2"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+
+# ponytail: opt-level 'z' everywhere except thermalcore, which is compute-bound.
+# opt-level 3 there buys real FLOPS; 'z' on the daemon only saves bytes we don't
+# care about (the APK dwarfs the binaries).
+#
+# The per-package thermalcore override is intentionally absent until Phase 3
+# moves that crate in — Cargo warns about a profile spec that matches no member
+# on every single build, which is noise that hides real warnings.
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
