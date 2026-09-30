@@ -46,7 +46,8 @@ TARGETS=(
 # `[[bin]]` name (Cargo rejects `.`), so the rename happens here.
 BINARIES=(
     "azenith-daemon:sys.azenith-service"
-    "azenith-preloadbin:sys.azenith-preloadbin"
+    "preloadbin:sys.azenith-preloadbin"
+    "rianixia-thermalcore:sys.azenith-rianixiathermalcore"
 )
 
 total_before=0
@@ -61,7 +62,12 @@ for target in "${TARGETS[@]}"; do
     for entry in "${BINARIES[@]}"; do
         bin="${entry%%:*}"
         outname="${entry##*:}"
-        [ -f "$target_dir/$bin" ] || continue
+        # Fatal, not `continue`: a name typo here silently ships a zip with no
+        # daemon in it, and nothing downstream notices until boot.
+        if [ ! -f "$target_dir/$bin" ]; then
+            echo ">>> error: missing $target_dir/$bin" >&2
+            exit 1
+        fi
 
         before=$(stat -c%s "$target_dir/$bin")
         if [ -x "$STRIP_BIN" ]; then
