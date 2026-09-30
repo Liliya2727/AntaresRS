@@ -47,20 +47,39 @@ mkdir -p mainfiles/libs/arm64-v8a
 mkdir -p mainfiles/libs/armeabi-v7a
 mkdir -p mainfiles/system/bin
 
-[ -d "libs" ] && cp -r libs/* mainfiles/libs/ 2>/dev/null
-[ -d "archdaemon/libs" ] && cp -r archdaemon/libs/* mainfiles/libs/ 2>/dev/null
-[ -d "preloadbin/libs" ] && cp -r preloadbin/libs/* mainfiles/libs/ 2>/dev/null
+# The C tree is gone; everything now comes out of one cargo target dir.
+# Cargo rejects `.` in `[[bin]]` names, so the bins are dot-free and get
+# their `sys.azenith-*` names here.
+#
+#   azenith-daemon  -> sys.azenith-service          (the only real binary)
+#   preloadbin      -> sys.azenith-preloadbin      (separate process, plan Q3)
+#   rianixia-thermalcore -> sys.azenith-rianixiathermalcore
+#
+# profilesettings / utilityconf / preferredtweaks are no longer shipped: the
+# daemon links them in and dispatches in-process (plan Q1, Option A).
 
-# Ambil binari Rust berdasarkan RUST_PROFILE (debug / release)
-cp thermalcore/target/aarch64-linux-android/$RUST_PROFILE/rianixia-thermalcore mainfiles/libs/arm64-v8a/sys.azenith-rianixiathermalcore 2>/dev/null || true
-cp binprofiles/target/aarch64-linux-android/$RUST_PROFILE/azenith-profilesettings mainfiles/libs/arm64-v8a/sys.azenith-profilesettings 2>/dev/null || true
-cp binutils/target/aarch64-linux-android/$RUST_PROFILE/azenith-utilityconf mainfiles/libs/arm64-v8a/sys.azenith-utilityconf 2>/dev/null || true
-cp binpreferenced/target/aarch64-linux-android/$RUST_PROFILE/azenith-preferencedtweaks mainfiles/libs/arm64-v8a/sys.azenith-preferencedtweaks 2>/dev/null || true
+collect_rust_bins() {
+	abi_target="$1"   # aarch64-linux-android | armv7-linux-androideabi
+	out_dir="$2"      # mainfiles/libs/arm64-v8a | mainfiles/libs/armeabi-v7a
+	src="target/$abi_target/$RUST_PROFILE"
 
-cp thermalcore/target/armv7-linux-androideabi/$RUST_PROFILE/rianixia-thermalcore mainfiles/libs/armeabi-v7a/sys.azenith-rianixiathermalcore 2>/dev/null || true
-cp binprofiles/target/armv7-linux-androideabi/$RUST_PROFILE/azenith-profilesettings mainfiles/libs/armeabi-v7a/sys.azenith-profilesettings 2>/dev/null || true
-cp binutils/target/armv7-linux-androideabi/$RUST_PROFILE/azenith-utilityconf mainfiles/libs/armeabi-v7a/sys.azenith-utilityconf 2>/dev/null || true
-cp binpreferenced/target/armv7-linux-androideabi/$RUST_PROFILE/azenith-preferencedtweaks mainfiles/libs/armeabi-v7a/sys.azenith-preferencedtweaks 2>/dev/null || true
+	for pair in \
+		"azenith-daemon:sys.azenith-service" \
+		"preloadbin:sys.azenith-preloadbin" \
+		"rianixia-thermalcore:sys.azenith-rianixiathermalcore"; do
+		bin="${pair%%:*}"
+		dest="${pair##*:}"
+		if [ -f "$src/$bin" ]; then
+			cp "$src/$bin" "$out_dir/$dest"
+		else
+			echo "ERROR: missing $src/$bin"
+			exit 1
+		fi
+	done
+}
+
+collect_rust_bins aarch64-linux-android mainfiles/libs/arm64-v8a
+collect_rust_bins armv7-linux-androideabi mainfiles/libs/armeabi-v7a
 
 # Other Files
 cp azenithApplist.json mainfiles/

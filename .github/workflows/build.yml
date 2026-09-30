@@ -12,11 +12,15 @@ on:
       - ".github/workflows/build.yml"
       - ".github/scripts/**"
       - "manager/**"
-      - "archdaemon/**"
+      - "crates/**"
+      - "binprofiles/**"
+      - "binutils/**"
+      - "binpreferenced/**"
       - "tweakfls/**"
       - "mainfiles/**"
-      - "preloadbin/**"
       - "thermalcore/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "azenithApplist.json"
       - "version"
       - "version_type"
@@ -54,24 +58,6 @@ jobs:
         with:
           ndk-version: r29
 
-      - name: Compile Daemon
-        working-directory: ./archdaemon
-        run: |
-          if [ "$V_TYPE" == "experimental" ]; then
-            ndk-build NDK_DEBUG=1
-          else
-            ndk-build
-          fi
-
-      - name: Compile Preload Binary
-        working-directory: ./preloadbin
-        run: |
-          if [ "$V_TYPE" == "experimental" ]; then
-            ndk-build NDK_DEBUG=1
-          else
-            ndk-build
-          fi
-
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -80,35 +66,10 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
-      - name: Build AZenith Thermalcore
-        working-directory: ./thermalcore
-        run: |
-          if [ "$V_TYPE" == "experimental" ]; then
-            cargo ndk -t arm64-v8a -t armeabi-v7a build
-          else
-            cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-          fi
-
-      - name: Compile AZenith Profilesettings
-        working-directory: ./binprofiles
-        run: |
-          if [ "$V_TYPE" == "experimental" ]; then
-            cargo ndk -t arm64-v8a -t armeabi-v7a build
-          else
-            cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-          fi
-
-      - name: Compile AZenith Utility
-        working-directory: ./binutils
-        run: |
-          if [ "$V_TYPE" == "experimental" ]; then
-            cargo ndk -t arm64-v8a -t armeabi-v7a build
-          else
-            cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-          fi
-          
-      - name: Compile AZenith Preferenced
-        working-directory: ./binpreferenced
+      # One invocation builds the whole workspace: the unified daemon, the
+      # preload binary, and thermalcore. The four crates that used to be built
+      # separately are path dependencies of the daemon now.
+      - name: Build AZenith Rust Workspace
         run: |
           if [ "$V_TYPE" == "experimental" ]; then
             cargo ndk -t arm64-v8a -t armeabi-v7a build

@@ -53,7 +53,7 @@ pub fn apply(daemon: &mut Daemon, target: &str) -> bool {
         "RenderHandler",
         &format!("Renderer mismatch! Current: {current} | Target: {target}. Switching..."),
     );
-    let _ = shell::systemv(&format!("sys.azenith-service utils setrender {target}"));
+    let _ = azenith_utilityconf::dispatch(&["setrender".to_string(), target.to_string()]);
     android_props::setprop(PROP_CONF, target);
     true
 }
@@ -78,7 +78,7 @@ pub fn restore(daemon: &mut Daemon) {
             let _ = shell::systemv("sys.azenith-service utils setrender default");
             android_props::setprop(PROP_CONF, "default");
         } else {
-            let _ = shell::systemv(&format!("sys.azenith-service utils setrender {saved}"));
+            let _ = azenith_utilityconf::dispatch(&["setrender".to_string(), saved.clone()]);
             android_props::setprop(PROP_CONF, &daemon.saved_sys_renderer);
         }
     }

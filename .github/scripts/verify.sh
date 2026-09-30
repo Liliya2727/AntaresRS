@@ -12,7 +12,6 @@ cd "$GITHUB_WORKSPACE" || {
 	exit 1
 }
 
-readonly HEADER_FILE="archdaemon/jni/include/AZenith.h"
 readonly GRADLE_FILE="manager/app/build.gradle.kts"
 
 [ -f "version" ] || { echo "❌ Error: 'version' file not found!"; exit 1; }
@@ -29,7 +28,12 @@ echo "Starting version injection..."
 echo "Target Version: $FULL_VERSION"
 echo "Version Code  : $VERSION_CODE"
 
-sed -i "s|#define MODULE_VERSION \".*\"|#define MODULE_VERSION \"$FULL_VERSION\"|" "$HEADER_FILE"
+# The Rust daemon reads AZENITH_VERSION in crates/azenith-common/build.rs and
+# bakes it into MODULE_VERSION. It used to be `sed`-patched into a C header
+# that no longer exists; the .placeholder default means a build that skipped
+# this step still compiles but hard-exits on a real install, so the default
+# stays visible rather than silently becoming something plausible.
+export AZENITH_VERSION="$FULL_VERSION"
 
 sed -i "s/versionCode =.*/versionCode = $VERSION_CODE/" "$GRADLE_FILE"
 sed -i "s/versionName =.*/versionName = \"$FULL_VERSION\"/" "$GRADLE_FILE"
@@ -39,5 +43,6 @@ echo "---------------------------------------------------"
 
 grep -H "versionCode" "$GRADLE_FILE"
 grep -H "versionName" "$GRADLE_FILE"
-grep -H "MODULE_VERSION" "$HEADER_FILE"
+echo "AZENITH_VERSION=$AZENITH_VERSION (picked up by azenith-common/build.rs)"
 echo "---------------------------------------------------"
+
