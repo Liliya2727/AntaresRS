@@ -175,7 +175,12 @@ fn run_gated(cmd: &str, args: &[String]) -> i32 {
             crate::daemon::startup::run();
             0
         }
-        "profiles" => handle_profile(&args[1..]),
+        // `handle_profile` reads the mode at `args[1]`, the same slot the
+        // `--profile` flag fills, so it needs the command word kept in place.
+        // Slicing it off first — as the other arms do for the crates, whose
+        // dispatchers read index 0 — silently dropped the mode and answered
+        // "--profile needs a mode" for a perfectly valid `profiles 2`.
+        "profiles" => handle_profile(args),
         "utils" | "thermal" | "prefs" | "preload" => dispatch_crate(cmd, &args[1..]),
         _ => {
             eprintln!("\x1b[31mERROR:\x1b[0m Unknown command: {cmd}");
@@ -225,13 +230,13 @@ fn handle_profile(args: &[String]) -> i32 {
         return 1;
     };
 
-    // A profile switch is a request, not an action: the running daemon picks it
-    // up on its next poll so it happens on the daemon's thread, not this one.
-    let body = format!("profile {}\n", mode.index());
-    if let Err(e) = std::fs::write(paths::GAME_INFO, body) {
-        eprintln!("ERROR: cannot write {}: {e}", paths::GAME_INFO);
-        return 1;
-    }
+    // Apply here, not via a file the daemon reads later. The C called
+    // `run_profiler` directly; writing `API/gameinfo` instead was a silent
+    // no-op, because nothing ever reads that file — in the C either. This is
+    // the path `ProfileTileService.kt` and the Manager's profile buttons use,
+    // so a no-op here meant the UI claimed a profile switch that never landed.
+    azenith_profilesettings::run(&[mode.index().to_string()]);
+    crate::profiles::write_current_profile(mode);
     0
 }
 
@@ -299,7 +304,10 @@ mod tests {
         let dispatches = std::panic::catch_unwind(|| {
             // `setsMaliGov` is harmless: it only writes when a matching node
             // exists, and this asserts the dispatch *route*, not the effect.
-            run(helper, &["setsMaliGov".to_string(), "performance".to_string()])
+            run(
+                helper,
+                &["setsMaliGov".to_string(), "performance".to_string()],
+            )
         });
         assert!(dispatches.is_ok(), "dispatch must not unwind");
     }
@@ -354,5 +362,36 @@ mod tests {
         // error.
         let code = run("sys.azenith-service", &["--nonsense".into()]);
         assert_eq!(code, 1);
+    }
+
+    #[test]
+    fn profile_switching_rejects_a_bad_mode_before_touching_the_system() {
+        // The Manager sends `-p <mode>` from the tile and the profile buttons,
+        // so a typo must fail loudly rather than silently doing nothing.
+        assert_eq!(run("sys.azenith-service", &["--profile".into()]), 1);
+        assert_eq!(
+            run("sys.azenith-service", &["--profile".into(), "banana".into()]),
+            1
+        );
+    }
+
+    #[test]
+    fn the_profiles_subcommand_keeps_the_mode_that_follows_it() {
+        // `profiles <mode>` is the unified-binary spelling of `--profile <mode>`
+        // (plan Q1). It used to slice the command word off before handing the
+        // rest to `handle_profile`, which reads the mode at index 1 — so the
+        // mode was dropped and a valid `profiles 2` reported
+        // "--profile needs a mode". Same off-by-one shape as the argv[0] bug:
+        // the tests only ever used the flag spelling.
+        //
+        // A bad mode is the cheapest way to observe the argument reaching the
+        // parser: "banana" must be rejected as invalid rather than missing.
+        assert_eq!(
+            run("sys.azenith-service", &["profiles".into(), "banana".into()]),
+            1,
+            "the mode after `profiles` must reach the parser, not be dropped"
+        );
+        // And with no mode at all it is genuinely missing, not invalid.
+        assert_eq!(run("sys.azenith-service", &["profiles".into()]), 1);
     }
 }

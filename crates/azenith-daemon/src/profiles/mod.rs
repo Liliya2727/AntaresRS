@@ -71,9 +71,8 @@ fn maybe_start_preload(daemon: &Daemon) {
     let Some(package) = daemon.gamestart.as_deref() else {
         return;
     };
-    let global = android_props::is_true(&android_props::getprop(
-        "persist.sys.azenithconf.APreload",
-    ));
+    let global =
+        android_props::is_true(&android_props::getprop("persist.sys.azenithconf.APreload"));
     let per_app = daemon
         .opts_for(package)
         .is_some_and(|o| !GameConfig::is_default(&o.game_preload));

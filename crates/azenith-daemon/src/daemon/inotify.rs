@@ -530,10 +530,40 @@ mod app_wants_tests {
     }
 }
 
-/// Probes `java.lock` the same way the CLI does: take it non-blocking, and if
-/// that succeeds, nobody holds it — so release it again immediately.
+/// Probes `java.lock` with `fcntl(F_GETLK)`, which is what the companion's
+/// `FileChannel.tryLock()` takes.
+///
+/// `flock` and POSIX record locks are *independent* namespaces on Linux: they
+/// never conflict, so probing with `flock` always reports "free" no matter what
+/// the companion does, and the daemon's startup wait then always times out.
+/// The C kept these apart for exactly this reason — `F_GETLK` for the
+/// companion, `flock` for its own lock — and folding both into one helper is
+/// what broke the boot sequence. Verified on-device: `/proc/locks` shows the
+/// companion's `POSIX WRITE` lock while `flock` acquires the same file freely.
 pub fn java_lock_is_held() -> bool {
-    !crate::daemon::inotify::lock_is_free(paths::JAVA_LOCK)
+    let Ok(c) = std::ffi::CString::new(paths::JAVA_LOCK) else {
+        return false;
+    };
+    // SAFETY: `c` is a valid NUL-terminated path for the call's duration.
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY) };
+    if fd < 0 {
+        return false;
+    }
+    // F_GETLK only *reports* a conflicting lock; it never takes one, so a
+    // probe cannot disturb the companion's lock.
+    let mut fl = libc::flock {
+        l_type: libc::F_WRLCK as i16,
+        l_whence: libc::SEEK_SET as i16,
+        l_start: 0,
+        l_len: 0,
+        l_pid: 0,
+    };
+    // SAFETY: `fd` is owned here, and `fl` is a valid, fully initialised
+    // `struct flock` for the duration of the call.
+    let queried = unsafe { libc::fcntl(fd, libc::F_GETLK, &mut fl) } != -1;
+    // SAFETY: closing a descriptor we own is always valid.
+    unsafe { libc::close(fd) };
+    queried && fl.l_type != libc::F_UNLCK as i16
 }
 
 /// Acquires and holds the daemon lock for the process lifetime.
@@ -619,6 +649,111 @@ mod tests {
 
     fn daemon() -> Daemon {
         Daemon::default()
+    }
+
+    #[test]
+    fn a_fcntl_write_lock_from_another_process_is_reported_as_held() {
+        // The companion takes a POSIX `fcntl` write lock. Probing with `flock`
+        // cannot see it -- the two are independent namespaces on Linux -- so a
+        // flock-based probe reports "free" forever and the daemon times out on
+        // startup.
+        //
+        // POSIX record locks are owned per-process, so an in-process lock is
+        // invisible to this process's own F_GETLK. The real case is always
+        // cross-process (companion vs daemon), so the lock holder has to be a
+        // separate process for the probe to mean anything.
+        let dir = std::env::current_dir().unwrap().join("fcntl_lock_probe");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("java.lock");
+        let c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+
+        // SAFETY: plain syscalls, both fds fresh.
+        let mut fds = [0i32; 2];
+        // SAFETY: `fds` is a valid two-element array for the call.
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        let (rd, wr) = (fds[0], fds[1]);
+
+        // SAFETY: fork with no state carried across except raw fds. The child
+        // uses only async-signal-safe syscalls, which is what a post-fork child
+        // in a multi-threaded test harness is required to do.
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork must succeed");
+        if pid == 0 {
+            // Child: take the write lock, tell the parent, hold, then exit.
+            unsafe {
+                libc::close(rd);
+                let fd = libc::open(c.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644);
+                let mut fl = libc::flock {
+                    l_type: libc::F_WRLCK as i16,
+                    l_whence: libc::SEEK_SET as i16,
+                    l_start: 0,
+                    l_len: 0,
+                    l_pid: 0,
+                };
+                if fd < 0 || libc::fcntl(fd, libc::F_SETLK, &mut fl) == -1 {
+                    libc::_exit(1);
+                }
+                let b = 1u8;
+                libc::write(wr, &b as *const u8 as *const libc::c_void, 1);
+                libc::sleep(10);
+                libc::_exit(0);
+            }
+        }
+
+        // Parent: wait for the child to confirm it holds the lock.
+        // SAFETY: `rd` is owned here and the child closed its copy.
+        let mut got = 0u8;
+        unsafe {
+            assert_eq!(
+                libc::read(rd, &mut got as *mut u8 as *mut libc::c_void, 1),
+                1,
+                "child must report the lock is held"
+            );
+            libc::close(rd);
+            libc::close(wr);
+        }
+
+        // The probe under test: F_GETLK, exactly as `java_lock_is_held` does.
+        // SAFETY: a fresh descriptor on the same file; `probe` is initialised.
+        let mut probe = libc::flock {
+            l_type: libc::F_WRLCK as i16,
+            l_whence: libc::SEEK_SET as i16,
+            l_start: 0,
+            l_len: 0,
+            l_pid: 0,
+        };
+        // SAFETY: `c` outlives the call.
+        let fd2 = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY) };
+        assert!(fd2 >= 0);
+        // SAFETY: `fd2` is owned, `probe` fully initialised.
+        let ok = unsafe { libc::fcntl(fd2, libc::F_GETLK, &mut probe) } != -1;
+        assert!(
+            ok && probe.l_type != libc::F_UNLCK as i16,
+            "F_GETLK must see the companion's lock"
+        );
+
+        // And the bug itself: flock happily takes a file that already carries
+        // someone else's fcntl lock, which is why probing with it always said
+        // "not held" and the startup wait always timed out.
+        // SAFETY: a third owned descriptor on the same file.
+        let fd3 = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY) };
+        assert!(fd3 >= 0);
+        // SAFETY: `fd3` is owned.
+        let flock_got_it = unsafe { libc::flock(fd3, libc::LOCK_EX | libc::LOCK_NB) } == 0;
+        assert!(
+            flock_got_it,
+            "flock and fcntl are independent namespaces; this is why the \
+             startup probe must use F_GETLK"
+        );
+
+        // SAFETY: all descriptors are owned here; the child is disposable.
+        unsafe {
+            libc::close(fd2);
+            libc::close(fd3);
+            libc::kill(pid, libc::SIGKILL);
+            libc::waitpid(pid, std::ptr::null_mut(), 0);
+        }
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -105,9 +105,7 @@ pub fn game_preload(package: &str) {
     log(
         Level::Info,
         "GamePreload",
-        &format!(
-            "game {package} preloaded: total {total_pages} pages touched (~{total_size})"
-        ),
+        &format!("game {package} preloaded: total {total_pages} pages touched (~{total_size})"),
     );
 }
 
@@ -128,10 +126,7 @@ fn apk_path(package: &str) -> Option<String> {
 }
 
 /// Spawns the preload binary, returning the read end of its stdout.
-fn spawn_preload(
-    budget: &str,
-    target: &Path,
-) -> Option<std::process::ChildStdout> {
+fn spawn_preload(budget: &str, target: &Path) -> Option<std::process::ChildStdout> {
     Command::new(paths::PRELOAD_BIN)
         .args(["-v", "-t", "-m", budget])
         .arg(target)
@@ -157,11 +152,9 @@ fn apk_dir(apk_path: &str) -> PathBuf {
 
 fn has_shared_object(dir: &Path) -> bool {
     std::fs::read_dir(dir).is_ok_and(|entries| {
-        entries.filter_map(Result::ok).any(|e| {
-            e.file_name()
-                .to_str()
-                .is_some_and(|n| n.ends_with(".so"))
-        })
+        entries
+            .filter_map(Result::ok)
+            .any(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".so")))
     })
 }
 
