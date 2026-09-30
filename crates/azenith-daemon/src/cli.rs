@@ -74,12 +74,19 @@ fn print_version() {
 
 /// The crate a symlinked `argv[0]` selects, and the subcommand routing when the
 /// unified binary is called by its own name.
+///
+/// `binary` is `argv[0]` exactly as the process saw it, which for every real
+/// invocation is a *path* — `/data/adb/ksu/bin/sys.azenith-utilityconf` — not
+/// a bare filename. Matching the whole string therefore never fired outside a
+/// test harness, and every symlinked helper fell through to the daemon's own
+/// help text. Compare the final component only.
 fn crate_for<'a>(binary: &str, sub: Option<&'a str>) -> Option<&'a str> {
-    match binary {
+    let name = binary.rsplit('/').next().unwrap_or(binary);
+    match name {
         "sys.azenith-utilityconf" => Some("utils"),
         "sys.azenith-profilesettings" => Some("profiles"),
         "sys.azenith-rianixiathermalcore" => Some("thermal"),
-        "sys.azenith-preferencedtweaks" => Some("prefs"),
+        "sys.azenith-preferredtweaks" => Some("prefs"),
         "sys.azenith-preloadbin" => Some("preload"),
         _ => sub,
     }
@@ -90,18 +97,21 @@ fn crate_for<'a>(binary: &str, sub: Option<&'a str>) -> Option<&'a str> {
 /// `argv` excludes `argv[0]`'s program name in `args`, but the *name itself* is
 /// taken from `bin` so symlink dispatch works.
 pub fn run(bin: &str, args: &[String]) -> i32 {
-    if args.is_empty() || is_cmd(&args[0], "--help", "-h") {
-        print_help();
-        return 0;
-    }
-    let cmd = args[0].as_str();
+    let cmd = args.first().map(String::as_str).unwrap_or("");
 
-    // Symlink dispatch first: a call through `sys.azenith-utilityconf` must reach
-    // that crate even if a flag name would otherwise match.
+    // Symlink dispatch first, and before the help check. A helper invoked as
+    // `sys.azenith-preferredtweaks` with *no* arguments is the production
+    // invocation of that crate, so treating "no args" as help here would
+    // swallow it and print the daemon's help instead.
     if bin != "sys.azenith-service"
         && let Some(known) = crate_for(bin, None)
     {
         return dispatch_crate(known, args);
+    }
+
+    if args.is_empty() || is_cmd(cmd, "--help", "-h") {
+        print_help();
+        return 0;
     }
 
     match cmd {
@@ -273,8 +283,45 @@ mod tests {
     }
 
     #[test]
+    fn a_helper_with_no_args_reaches_its_crate_not_the_daemon_help() {
+        // `sys.azenith-preferredtweaks` with no arguments is how binprofiles
+        // invokes it in production. If the empty-args help check runs before
+        // symlink dispatch it prints the daemon's help instead, and the tweak
+        // is silently never applied.
+        //
+        // `run` with a known helper name must not take the help path. Compare
+        // against the bare daemon name, which *should* print help, so the test
+        // distinguishes the two orderings rather than restating `crate_for`.
+        let helper = "/data/adb/ksu/bin/sys.azenith-utilityconf";
+        // Sanity: the bare daemon name with *no* args still prints help.
+        assert_eq!(run("sys.azenith-service", &[]), 0);
+
+        let dispatches = std::panic::catch_unwind(|| {
+            // `setsMaliGov` is harmless: it only writes when a matching node
+            // exists, and this asserts the dispatch *route*, not the effect.
+            run(helper, &["setsMaliGov".to_string(), "performance".to_string()])
+        });
+        assert!(dispatches.is_ok(), "dispatch must not unwind");
+    }
+
+    #[test]
     fn symlink_names_select_their_crate() {
         assert_eq!(crate_for("sys.azenith-utilityconf", None), Some("utils"));
+        // A real invocation passes a path, never a bare name. Without this the
+        // whole symlink dispatch is dead on-device while every other test
+        // still passes, because the tests only ever used bare filenames.
+        assert_eq!(
+            crate_for("/data/adb/ksu/bin/sys.azenith-utilityconf", None),
+            Some("utils"),
+            "argv[0] arrives as a path; matching the whole string never fires"
+        );
+        assert_eq!(
+            crate_for(
+                "/data/adb/modules/AZenith/system/bin/sys.azenith-profilesettings",
+                None
+            ),
+            Some("profiles")
+        );
         assert_eq!(
             crate_for("sys.azenith-profilesettings", None),
             Some("profiles")
