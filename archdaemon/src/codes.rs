@@ -38,7 +38,11 @@ fn prop(k: &str) -> String {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
 }
 
-fn run_resolver(apk: &str) -> String {
+// Entry point of the binder_resolver APK. The apk built from ./binder_resolver uses
+// zx.binder.MainKt, the older prebuilt (encore) uses com.rem01gaming.binderresolver.MainKt.
+const ENTRY_CLASSES: [&str; 2] = ["zx.binder.MainKt", "com.rem01gaming.binderresolver.MainKt"];
+
+fn run_resolver(apk: &str, entry: &str) -> String {
     let Ok(mut ch) = Command::new("/system/bin/app_process")
         .env_remove("LD_LIBRARY_PATH")
         .env_remove("LD_PRELOAD")
@@ -48,7 +52,7 @@ fn run_resolver(apk: &str) -> String {
         .env("ANDROID_I18N_ROOT", "/apex/com.android.i18n")
         .env("ANDROID_TZDATA_ROOT", "/apex/com.android.tzdata")
         .arg(format!("-Djava.class.path={apk}")).arg("/")
-        .arg("com.rem01gaming.binderresolver.MainKt")
+        .arg(entry)
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit())
         .spawn() else {
             error!("failed to spawn app_process");
@@ -110,7 +114,15 @@ pub(crate) fn load_codes() -> Option<Codes> {
         return None;
     }
     let t0 = std::time::Instant::now();
-    let out = run_resolver(APK_PATH);
+    let mut out = String::new();
+    for entry in ENTRY_CLASSES {
+        out = run_resolver(APK_PATH, entry);
+        if parse_codes(&out).is_some() {
+            debug!("resolver entry point: {entry}");
+            break;
+        }
+        warn!("resolver produced no usable output with {entry}, trying the next entry point");
+    }
     let _ = fs::remove_file(APK_PATH);
     debug!("resolver finished in {} ms, output:\n{}", t0.elapsed().as_millis(), out.trim_end());
 

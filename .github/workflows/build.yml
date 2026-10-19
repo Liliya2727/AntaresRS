@@ -1,4 +1,4 @@
-name: AZenith
+name: AntaresRS
 
 on:
   pull_request:
@@ -11,10 +11,13 @@ on:
     paths:
       - ".github/workflows/build.yml"
       - ".github/scripts/**"
-      - "mainfiles/**"
+      - "archdaemon/**"
+      - "binder_resolver/**"
+      - "binprofiles/**"
+      - "binutils/**"
+      - "binpreferenced/**"
       - "preloadbin/**"
-      - "cargo/**"
-      - "webui/**"
+      - "mainfiles/**"
       - "gamelist.txt"
       - "version"
 
@@ -24,24 +27,56 @@ concurrency:
 
 jobs:
   build:
-    name: Build Flashable ZIP
+    name: Build AntaresRS
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      # ------------------------------------------------------------------
+      # 1. binder_resolver APK (release, unsigned)
+      #    archdaemon embeds this APK with include_bytes!("../binder_resolver.apk"),
+      #    so it has to exist before the Rust binaries are built.
+      # ------------------------------------------------------------------
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
-          toolchain: stable
-          override: true
+          java-version: "21"
+          distribution: temurin
 
+      - name: Build Binder Resolver APK (release, unsigned)
+        working-directory: ./binder_resolver
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean assembleRelease
+
+      - name: Stage Binder Resolver APK into archdaemon
+        run: |
+          APK=$(find binder_resolver/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "binder_resolver APK not found" >&2
+            exit 1
+          fi
+          cp "$APK" archdaemon/binder_resolver.apk
+          ls -l archdaemon/binder_resolver.apk
+
+      # ------------------------------------------------------------------
+      # 2. Rust binaries: archdaemon + binprofiles/binutils/binpreferenced
+      # ------------------------------------------------------------------
       - name: NDK Setup
-        uses: nttld/setup-ndk@v1.5.0
+        uses: nttld/setup-ndk@v1.6.0
         with:
-          ndk-version: r28b
+          ndk-version: r29
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -49,66 +84,43 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Add ARCH Target
-        run: |
-          rustup target add \
-          aarch64-linux-android \
-          armv7-linux-androideabi \
-          i686-linux-android \
-          x86_64-linux-android 
+      - name: Build ArchDaemon (sys.azenith-service)
+        working-directory: ./archdaemon
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
 
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+      - name: Build Profilesettings (sys.azenith-profilesettings)
+        working-directory: ./binprofiles
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
 
-      - name: Install UPX
-        run: sudo apt-get update && sudo apt-get install -y upx
+      - name: Build Utilityconf (sys.azenith-utilityconf)
+        working-directory: ./binutils
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
 
-      - name: Build Rust Daemon
-        run: |
-          cd ./cargo
-          # Build for all targets
-          cargo ndk --target aarch64-linux-android build --release
-          cargo ndk --target armv7-linux-androideabi build --release
-          cargo ndk --target i686-linux-android build --release
-          cargo ndk --target x86_64-linux-android build --release
+      - name: Build Preferencedtweaks (sys.azenith-preferencedtweaks)
+        working-directory: ./binpreferenced
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
 
-          echo "Stripping binaries..."
-          $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/aarch64-linux-android/release/sys_azenithrs-service
-          $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/armv7-linux-androideabi/release/sys_azenithrs-service
-          $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/i686-linux-android/release/sys_azenithrs-service
-          $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/x86_64-linux-android/release/sys_azenithrs-service
-       
-          echo "Compressing with UPX..."
-          upx --best --lzma target/aarch64-linux-android/release/sys_azenithrs-service
-          upx --best --lzma target/armv7-linux-androideabi/release/sys_azenithrs-service
-          upx --best --lzma target/i686-linux-android/release/sys_azenithrs-service
-          upx --best --lzma target/x86_64-linux-android/release/sys_azenithrs-service
+      # ------------------------------------------------------------------
+      # 3. Preload binary (C, ndk-build)
+      # ------------------------------------------------------------------
+      - name: Compile Preload Binary
+        working-directory: ./preloadbin
+        run: ndk-build APP_ABI="arm64-v8a armeabi-v7a x86 x86_64"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2.0.2
-
-      - name: Build WebRoots
-        working-directory: ./webui
-        run: |
-          bun install
-          bun run build
-          cp -r ./dist/* ../mainfiles/webroot
-
+      # ------------------------------------------------------------------
+      # 4. Flashable ZIP
+      # ------------------------------------------------------------------
       - name: Compile Flashable Zip
         id: compileZip
         run: bash .github/scripts/compile_zip.sh
 
-      - name: Unzip AZenith Package
-        run: |
-          unzip ${{ steps.compileZip.outputs.zipName }} -d extracted
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4.6.2
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.compileZip.outputs.zipName }}
-          path: extracted/**
+          name: ${{ steps.compileZip.outputs.artifactName }}
+          path: ${{ steps.compileZip.outputs.zipName }}
+          if-no-files-found: error

@@ -1,6 +1,9 @@
 #!/bin/env bash
+# shellcheck disable=SC2035
 
-if [ -z "$GITHUB_WORKSPACE" ]; then
+set -eo pipefail
+
+if [ -z "${GITHUB_WORKSPACE:-}" ]; then
 	echo "This script should only run on GitHub action!" >&2
 	exit 1
 fi
@@ -13,15 +16,17 @@ cd "$GITHUB_WORKSPACE" || {
 
 # Put critical files and folders here
 need_integrity=(
-	"mainfiles/system/bin"
 	"mainfiles/libs"
+	"mainfiles/system/bin"
 	"mainfiles/META-INF"
 	"mainfiles/service.sh"
+	"mainfiles/post-fs-data.sh"
+	"mainfiles/action.sh"
+	"mainfiles/cleanup.sh"
 	"mainfiles/uninstall.sh"
 	"mainfiles/module.prop"
-    "mainfiles/module_icon.png"
+	"mainfiles/module.banner.jpg"
 	"mainfiles/gamelist.txt"
-    "mainfiles/toast.apk"
 )
 
 # Version info
@@ -32,28 +37,51 @@ sed -i "s/version=.*/version=$version ($release_code)/" mainfiles/module.prop
 sed -i "s/versionCode=.*/versionCode=$version_code/" mainfiles/module.prop
 
 # Compile Gamelist (1 package name per line, read directly by the daemon)
-cp "$GITHUB_WORKSPACE/gamelist.txt" "$GITHUB_WORKSPACE/mainfiles/gamelist.txt"
+cp gamelist.txt mainfiles/gamelist.txt
 
-# Copy module files
-# The daemon is installed as sys.azenith-service: sys.azenith-profilesettings
-# refuses to run unless the caller cmdline contains "sys.azenith-service"
-cp -r ./cargo/target/aarch64-linux-android/release/sys_azenithrs-service mainfiles/libs/arm64-v8a/sys.azenith-service
-cp -r ./cargo/target/armv7-linux-androideabi/release/sys_azenithrs-service mainfiles/libs/armeabi-v7a/sys.azenith-service
-cp -r ./cargo/target/i686-linux-android/release/sys_azenithrs-service mainfiles/libs/x86/sys.azenith-service
-cp -r ./cargo/target/x86_64-linux-android/release/sys_azenithrs-service mainfiles/libs/x86_64/sys.azenith-service
-cp -r ./tweakfls/* mainfiles/system/bin
-cp -r ./preloadbin/* mainfiles/system/bin
-cp LICENSE ./mainfiles
+# Copy the binaries for every supported ABI
+for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+	case "$abi" in
+		arm64-v8a)   rust_target="aarch64-linux-android" ;;
+		armeabi-v7a) rust_target="armv7-linux-androideabi" ;;
+		x86)         rust_target="i686-linux-android" ;;
+		x86_64)      rust_target="x86_64-linux-android" ;;
+	esac
 
-# Remove .sh extension from scripts
-find mainfiles/system/bin -maxdepth 1 -type f -name "*.sh" -exec sh -c 'mv -- "$0" "${0%.sh}"' {} \;
+	out="mainfiles/libs/$abi"
+	mkdir -p "$out"
+
+	# The daemon is installed as sys.azenith-service: sys.azenith-profilesettings
+	# refuses to run unless the caller cmdline contains "sys.azenith-service".
+	# (cargo cannot emit a binary name with a dot, hence the rename here)
+	cp "archdaemon/target/$rust_target/release/sys_azenithrs-service" "$out/sys.azenith-service"
+	cp "binprofiles/target/$rust_target/release/azenith-profilesettings" "$out/sys.azenith-profilesettings"
+	cp "binutils/target/$rust_target/release/azenith-utilityconf" "$out/sys.azenith-utilityconf"
+	cp "binpreferenced/target/$rust_target/release/azenith-preferencedtweaks" "$out/sys.azenith-preferencedtweaks"
+
+	# vmtouch clone, ndk-build output
+	cp "preloadbin/libs/$abi/sys.azenith-preloadbin" "$out/sys.azenith-preloadbin"
+	# a second name is expected by the daemon/manager scripts
+	cp "preloadbin/libs/$abi/sys.azenith-preloadbin" "$out/sys.azenith-preloadbin2"
+
+	echo "Staged $abi: $(ls "$out" | tr '\n' ' ')"
+done
+
+# Other files
+cp LICENSE mainfiles/ 2>/dev/null || true
 
 # Parse version info to module prop
-zipName="AZenith-Tweaks-$version-$release_code"
+zipName="AntaresRS-$version-$release_code.zip"
 echo "zipName=$zipName" >>"$GITHUB_OUTPUT"
+artifactName="${zipName%.zip}"
+echo "artifactName=$artifactName" >>"$GITHUB_OUTPUT"
 
 # Generate sha256sum for integrity checkup
 for file in "${need_integrity[@]}"; do
+	if [ ! -e "$file" ]; then
+		echo "ERROR: $file not found, cannot generate checksum" >&2
+		exit 1
+	fi
 	bash .github/scripts/generatesha256.sh "$file"
 done
 
@@ -63,8 +91,8 @@ cd ./mainfiles || {
 	exit 1
 }
 
-zip -r9 ../"$zipName" * -x *placeholder* *.map .shellcheckrc
-zip -z ../"$zipName" <<EOF
+zip -r9 "../$zipName" * -x *placeholder* *.map .shellcheckrc
+zip -z "../$zipName" <<EOF
 $version-$release_code
 Build Date $(date +"%a %b %d %H:%M:%S %Z %Y")
 EOF

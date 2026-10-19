@@ -22,6 +22,9 @@ ANTARES_CONFIG="/data/adb/.config/AntaresRS"
 device_codename=$(getprop ro.product.board)
 chip=$(getprop ro.hardware)
 
+# Binaries shipped inside libs/<abi>/ and installed to system/bin
+ANTARES_BINS="sys.azenith-service sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferencedtweaks sys.azenith-preloadbin sys.azenith-preloadbin2"
+
 # Create File
 make_node() {
     [ ! -f "$2" ] && echo "$1" >"$2"
@@ -49,11 +52,6 @@ unzip -o "$ZIPFILE" 'verify.sh' -d "$TMPDIR" >&2
 source "$TMPDIR/verify.sh"
 
 # Extract Module files
-ui_print "- Extracting system directory..."
-extract "$ZIPFILE" 'system/bin/sys.azenith-profilesettings' "$MODPATH"
-extract "$ZIPFILE" 'system/bin/sys.azenith-utilityconf' "$MODPATH"
-extract "$ZIPFILE" 'system/bin/sys.azenith-preloadbin' "$MODPATH"
-extract "$ZIPFILE" 'system/bin/sys.azenith-preloadbin2' "$MODPATH"
 ui_print "- Extracting service.sh..."
 extract "$ZIPFILE" service.sh "$MODPATH"
 ui_print "- Extracting module.prop..."
@@ -62,8 +60,10 @@ ui_print "- Extracting uninstall.sh..."
 extract "$ZIPFILE" uninstall.sh "$MODPATH"
 ui_print "- Extracting gamelist.txt..."
 extract "$ZIPFILE" gamelist.txt "$ANTARES_CONFIG/gamelist"
-ui_print "- Extracting module_icon.png..."
-extract "$ZIPFILE" module_icon.png /data/local/tmp
+if unzip -l "$ZIPFILE" module_icon.png >/dev/null 2>&1; then
+    ui_print "- Extracting module_icon.png..."
+    extract "$ZIPFILE" module_icon.png /data/local/tmp
+fi
 
 # Target architecture
 case $ARCH in
@@ -75,9 +75,12 @@ case $ARCH in
 *) abort ;;
 esac
 
-# Extract daemon
-ui_print "- Extracting sys.azenith-service for $ARCH_TMP"
-extract "$ZIPFILE" "libs/$ARCH_TMP/sys.azenith-service" "$TMPDIR"
+# Extract binaries for this architecture
+ui_print "- Extracting binaries for $ARCH_TMP..."
+for bin in $ANTARES_BINS; do
+    extract "$ZIPFILE" "libs/$ARCH_TMP/$bin" "$TMPDIR"
+done
+mkdir -p "$MODPATH/system/bin"
 cp "$TMPDIR"/libs/"$ARCH_TMP"/* "$MODPATH/system/bin"
 rm -rf "$TMPDIR/libs"
 ui_print "- Installing for Arch : $ARCH_TMP"
@@ -93,11 +96,9 @@ if [ "$KSU" = "true" ] || [ "$APATCH" = "true" ]; then
     for dir in $manager_paths; do
         [ -d "$dir" ] && {
             ui_print "- Creating symlink in $dir"
-            ln -sf "$BIN_PATH/sys.azenith-service" "$dir/sys.azenith-service"
-            ln -sf "$BIN_PATH/sys.azenith-profilesettings" "$dir/sys.azenith-profilesettings"
-            ln -sf "$BIN_PATH/sys.azenith-utilityconf" "$dir/sys.azenith-utilityconf"
-            ln -sf "$BIN_PATH/sys.azenith-preloadbin" "$dir/sys.azenith-preloadbin"
-            ln -sf "$BIN_PATH/sys.azenith-preloadbin2" "$dir/sys.azenith-preloadbin2"
+            for bin in $ANTARES_BINS; do
+                ln -sf "$BIN_PATH/$bin" "$dir/$bin"
+            done
         }
     done
 fi
@@ -152,8 +153,12 @@ esac
 ui_print "- Extracting WebUI"
 mkdir -p "$MODPATH/webroot"
 unzip -o "$ZIPFILE" "webroot/*" -d "$TMPDIR" >&2
-cp -r "$TMPDIR/webroot/"* "$MODPATH/webroot/"
-rm -rf "$TMPDIR/webroot"
+if [ -d "$TMPDIR/webroot" ]; then
+    cp -r "$TMPDIR"/webroot/* "$MODPATH/webroot/"
+    rm -rf "$TMPDIR/webroot"
+else
+    ui_print "- No WebUI in this build, skipping"
+fi
 
 # Make Module Config
 ui_print "- Creating Module Config"
@@ -194,12 +199,14 @@ fi
 # Install toast if not installed
 if pm list packages | grep -q bellavita.toast; then
     ui_print "- Bellavita Toast is already installed."
-else
+elif unzip -l "$ZIPFILE" toast.apk >/dev/null 2>&1; then
     ui_print "- Extracting Bellavita Toast..."
     unzip -qo "$ZIPFILE" toast.apk -d "$MODPATH" >&2
     ui_print "- Installing Bellavita Toast..."
     pm install "$MODPATH/toast.apk"
     rm "$MODPATH/toast.apk"
+else
+    ui_print "- Bellavita Toast not bundled, skipping"
 fi
 
 # Make sure to enable Auto Every installment and Update
@@ -213,10 +220,8 @@ rm -rf "$MODPATH/webroot/include"
 # Set Permissions
 ui_print "- Setting Permissions..."
 set_perm_recursive "$MODPATH/system/bin" 0 2000 0777 0777
-chmod +x "$MODPATH/system/bin/sys.azenith-service"
-chmod +x "$MODPATH/system/bin/sys.azenith-profilesettings"
-chmod +x "$MODPATH/system/bin/sys.azenith-utilityconf"
-chmod +x "$MODPATH/system/bin/sys.azenith-preloadbin"
-chmod +x "$MODPATH/system/bin/sys.azenith-preloadbin2"
+for bin in $ANTARES_BINS; do
+    chmod +x "$MODPATH/system/bin/$bin"
+done
 
 ui_print "- Installation complete!"

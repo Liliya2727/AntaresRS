@@ -49,6 +49,7 @@ rm -rf /data/AZenith
 manager_paths="/data/adb/ap/bin /data/adb/ksu/bin"
 binaries="sys.azenith-service sys.azenith-service_log \
           sys.azenith-profilesettings sys.azenith-utilityconf \
+          sys.azenith-preferencedtweaks \
           sys.azenith-preloadbin sys.azenith-preloadbin2"
 for dir in $manager_paths; do
   [ -d "$dir" ] || continue

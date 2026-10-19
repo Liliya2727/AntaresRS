@@ -1,1 +1,15 @@
 target/
+
+# built by CI (binder_resolver release APK) and embedded into the daemon
+archdaemon/binder_resolver.apk
+
+# gradle / android build outputs
+binder_resolver/.gradle/
+binder_resolver/build/
+binder_resolver/app/build/
+binder_resolver/local.properties
+
+# build outputs of the packaging step
+mainfiles/libs/
+mainfiles/gamelist.txt
+*.sha256
