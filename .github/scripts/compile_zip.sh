@@ -40,12 +40,10 @@ sed -i "s/versionCode=.*/versionCode=$version_code/" mainfiles/module.prop
 cp gamelist.txt mainfiles/gamelist.txt
 
 # Copy the binaries for every supported ABI
-for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+for abi in arm64-v8a armeabi-v7a; do
 	case "$abi" in
 		arm64-v8a)   rust_target="aarch64-linux-android" ;;
 		armeabi-v7a) rust_target="armv7-linux-androideabi" ;;
-		x86)         rust_target="i686-linux-android" ;;
-		x86_64)      rust_target="x86_64-linux-android" ;;
 	esac
 
 	out="mainfiles/libs/$abi"

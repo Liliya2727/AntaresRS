@@ -73,7 +73,7 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
+          targets: aarch64-linux-android, armv7-linux-androideabi
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
@@ -90,26 +90,26 @@ jobs:
 
       - name: Build ArchDaemon (sys.azenith-service)
         working-directory: ./archdaemon
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
 
       - name: Build Profilesettings (sys.azenith-profilesettings)
         working-directory: ./binprofiles
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
 
       - name: Build Utilityconf (sys.azenith-utilityconf)
         working-directory: ./binutils
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
 
       - name: Build Preferencedtweaks (sys.azenith-preferencedtweaks)
         working-directory: ./binpreferenced
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
 
       # ------------------------------------------------------------------
       # 3. Preload binary (C, ndk-build)
       # ------------------------------------------------------------------
       - name: Compile Preload Binary
         working-directory: ./preloadbin
-        run: ndk-build APP_ABI="arm64-v8a armeabi-v7a x86 x86_64"
+        run: ndk-build APP_ABI="arm64-v8a armeabi-v7a"
 
       # ------------------------------------------------------------------
       # 4. Flashable ZIP
