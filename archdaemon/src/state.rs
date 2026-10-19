@@ -6,29 +6,29 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use crate::log::{debug, error, info};
+use crate::profiler;
 
-const PROF_FILE: &str = "/data/adb/.libBinding/cur_prof";
-const ACTIVE_FILE: &str = "/data/adb/.libBinding/active_app";
-const STATUS_FILE: &str = "/data/adb/.libBinding/state.toml";
+const ACTIVE_FILE: &str = "/data/adb/.config/AntaresRS/active_app";
+const STATUS_FILE: &str = "/data/adb/.config/AntaresRS/state.toml";
 
 pub(crate) struct St {
-    pub(crate) list: BTreeSet<String>,                    // packages in the applist
+    pub(crate) list: BTreeSet<String>,                    // packages in the gamelist
     pub(crate) active: Option<(String, BTreeSet<i32>)>,   // (package, live pids) of the active app
-    last: String,                                         // last state written to file
+    last: String,                                         // last active app written to active_app
 }
 static ST: Mutex<St> = Mutex::new(St { list: BTreeSet::new(), active: None, last: String::new() });
 pub(crate) fn st() -> MutexGuard<'static, St> { ST.lock().unwrap_or_else(|e| e.into_inner()) }
 
 pub(crate) fn is_app(uid: i32) -> bool { (10000..20000).contains(&(uid % 100000)) }
 
-// Only used in scan_foreground (start / applist change), not on the hot path.
+// Only used in scan_foreground (start / gamelist change), not on the hot path.
 fn pkg_of_pid(pid: i32) -> Option<String> {
     let raw = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
     let name = String::from_utf8_lossy(raw.split(|&b| b == 0).next()?).into_owned();
     (!name.is_empty() && !name.contains(':') && name.contains('.')).then_some(name)
 }
 
-fn write_atomic(path: &str, data: &str) -> bool {
+pub(crate) fn write_atomic(path: &str, data: &str) -> bool {
     // Unique tmp name per call — with a fixed name, two threads writing at the same
     // time could eat each other's tmp file during rename (ENOENT error).
     static SEQ: AtomicU32 = AtomicU32::new(0);
@@ -52,18 +52,22 @@ const UNKNOWN_STAT: SysStat = SysStat { screen: "unknown", saver: "unknown", zen
 static SYS: Mutex<SysStat> = Mutex::new(UNKNOWN_STAT);
 static LAST_STATE: Mutex<String> = Mutex::new(String::new());
 
+pub(crate) fn screen() -> &'static str { SYS.lock().unwrap_or_else(|e| e.into_inner()).screen }
+pub(crate) fn saver() -> &'static str { SYS.lock().unwrap_or_else(|e| e.into_inner()).saver }
+
 // Write only when the contents change.
-pub(crate) fn write_state(prof: &str, pkg: &str, why: &str) {
+fn write_state(pkg: &str, why: &str) {
     let s = SYS.lock().unwrap_or_else(|e| e.into_inner());
     let body = format!(
-        "# libBinding state (auto-generated, do not edit manually)\n\
-         profile = \"{prof}\"\n\
+        "# state (auto-generated, do not edit manually)\n\
+         profile = \"{}\"\n\
          active_app = \"{pkg}\"\n\
          screen = \"{screen}\"\n\
          battery_saver = \"{saver}\"\n\
          zen_mode = \"{zen}\"\n\
          battery_level = {level}\n\
          charging = \"{charge}\"\n",
+        profiler::cur_name(),
         screen = s.screen, saver = s.saver, zen = s.zen, level = s.level, charge = s.charge,
     );
     drop(s);
@@ -75,7 +79,11 @@ pub(crate) fn write_state(prof: &str, pkg: &str, why: &str) {
     }
 }
 
-// Update one status field; if it changed, rewrite state.toml.
+fn active_pkg(a: &Option<(String, BTreeSet<i32>)>) -> String {
+    a.as_ref().map(|(p, _)| p.clone()).unwrap_or_else(|| "NULL".to_string())
+}
+
+// Update one status field; if it changed, rewrite state.toml and re-check the profile.
 pub(crate) fn sys_update(why: &str, f: impl FnOnce(&mut SysStat)) {
     let changed = {
         let mut g = SYS.lock().unwrap_or_else(|e| e.into_inner());
@@ -84,37 +92,30 @@ pub(crate) fn sys_update(why: &str, f: impl FnOnce(&mut SysStat)) {
         before != *g
     };
     if !changed { return; }
-    let (prof, pkg) = {
-        let g = st();
-        match &g.active {
-            Some((p, _)) => ("1", p.clone()),
-            None => ("2", "NULL".to_string()),
-        }
-    };
-    write_state(&prof, &pkg, why);
+    let active = st().active.clone();
+    let pkg = active_pkg(&active);
+    // screen / battery saver can change the profile (eco, grace period)
+    profiler::checkup(&active, why);
+    write_state(&pkg, why);
 }
 
-// Profile 1 = an applist app is active, profile 2 = fallback. Write only when it changes.
+// Persist the active app, then let the profiler decide the profile (1/2/3).
 pub(crate) fn apply(s: &mut St, why: &str) {
-    let (prof, pkg) = match &s.active {
-        Some((p, _)) => ("1", p.as_str()),
-        None => ("2", "NULL"),
-    };
-    let key = format!("{prof} {pkg}");
-    if key != s.last {
-        // active_app first, so a reader of cur_prof always gets a ready pair
-        if write_atomic(ACTIVE_FILE, pkg) && write_atomic(PROF_FILE, prof) {
+    let pkg = active_pkg(&s.active);
+    if pkg != s.last {
+        if write_atomic(ACTIVE_FILE, &pkg) {
             let from = if s.last.is_empty() { "(none)" } else { s.last.as_str() };
-            info!("profile: [{from}] -> [{key}] ({why})");
-            s.last = key;
+            info!("active app: [{from}] -> [{pkg}] ({why})");
+            s.last = pkg.clone();
         }
     } else {
-        debug!("state unchanged ({key}), skipping write [{why}]");
+        debug!("active app unchanged ({pkg}), skipping write [{why}]");
     }
-    write_state(prof, pkg, why);
+    profiler::checkup(&s.active, why);
+    write_state(&pkg, why);
 }
 
-// App from the applist currently on screen (oom_score_adj 0). Only called on start / applist change.
+// App from the gamelist currently on screen (oom_score_adj 0). Only called on start / gamelist change.
 fn scan_foreground(list: &BTreeSet<String>) -> Option<(i32, String)> {
     let rd = fs::read_dir("/proc").ok()?;
     for e in rd.flatten() {
@@ -137,7 +138,7 @@ pub(crate) fn adopt(why: &str) {
         s.active = scan_foreground(&s.list).map(|(pid, pkg)| (pkg, BTreeSet::from([pid])));
         match &s.active {
             Some((pkg, pids)) => info!("initial scan: {pkg} (pid {pids:?}) is in the foreground"),
-            None => debug!("initial scan: no applist app in the foreground"),
+            None => debug!("initial scan: no gamelist app in the foreground"),
         }
     }
     apply(s, why);

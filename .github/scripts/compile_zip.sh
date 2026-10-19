@@ -31,14 +31,16 @@ release_code="$(git rev-parse --short HEAD)-Release"
 sed -i "s/version=.*/version=$version ($release_code)/" mainfiles/module.prop
 sed -i "s/versionCode=.*/versionCode=$version_code/" mainfiles/module.prop
 
-# Compile Gamelist
-paste -sd '|' - <"$GITHUB_WORKSPACE/gamelist.txt" >"$GITHUB_WORKSPACE/mainfiles/gamelist.txt"
+# Compile Gamelist (1 package name per line, read directly by the daemon)
+cp "$GITHUB_WORKSPACE/gamelist.txt" "$GITHUB_WORKSPACE/mainfiles/gamelist.txt"
 
 # Copy module files
-cp -r ./cargo/target/aarch64-linux-android/release/sys_azenithrs-service mainfiles/libs/arm64-v8a/
-cp -r ./cargo/target/armv7-linux-androideabi/release/sys_azenithrs-service mainfiles/libs/armeabi-v7a/
-cp -r ./cargo/target/i686-linux-android/release/sys_azenithrs-service mainfiles/libs/x86/
-cp -r ./cargo/target/x86_64-linux-android/release/sys_azenithrs-service mainfiles/libs/x86_64/
+# The daemon is installed as sys.azenith-service: sys.azenith-profilesettings
+# refuses to run unless the caller cmdline contains "sys.azenith-service"
+cp -r ./cargo/target/aarch64-linux-android/release/sys_azenithrs-service mainfiles/libs/arm64-v8a/sys.azenith-service
+cp -r ./cargo/target/armv7-linux-androideabi/release/sys_azenithrs-service mainfiles/libs/armeabi-v7a/sys.azenith-service
+cp -r ./cargo/target/i686-linux-android/release/sys_azenithrs-service mainfiles/libs/x86/sys.azenith-service
+cp -r ./cargo/target/x86_64-linux-android/release/sys_azenithrs-service mainfiles/libs/x86_64/sys.azenith-service
 cp -r ./tweakfls/* mainfiles/system/bin
 cp -r ./preloadbin/* mainfiles/system/bin
 cp LICENSE ./mainfiles

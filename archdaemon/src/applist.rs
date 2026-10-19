@@ -1,4 +1,4 @@
-// ---------------- applist.json (GameRegistry) + inotify (InotifyWatcher) ----------------
+// ---------------- gamelist.txt (GameRegistry) + inotify (InotifyWatcher) ----------------
 use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::fs;
@@ -7,64 +7,27 @@ use std::thread;
 use crate::log::{debug, error, info, warn};
 use crate::state::{adopt, st};
 
-pub(crate) const LIST_DIR: &str = "/data/adb/.config/AZenith/gamelist";
-const LIST_NAME: &str = "azenithApplist.json";
-const LIST_FILE: &str = "/data/adb/.config/AZenith/gamelist/azenithApplist.json";
+pub(crate) const LIST_DIR: &str = "/data/adb/.config/AntaresRS/gamelist";
+const LIST_NAME: &str = "gamelist.txt";
+const LIST_FILE: &str = "/data/adb/.config/AntaresRS/gamelist/gamelist.txt";
 
-// Take only top-level keys (string before ':' at depth 1) without serde.
-fn parse_keys(text: &str) -> Option<BTreeSet<String>> {
-    let b = text.as_bytes();
-    let mut set = BTreeSet::new();
-    let (mut i, mut depth, mut opened) = (0usize, 0i32, false);
-    while i < b.len() {
-        match b[i] {
-            b'{' | b'[' => {
-                if !opened && b[i] != b'{' { return None; }
-                opened = true;
-                depth += 1;
-                i += 1;
-            }
-            b'}' | b']' => {
-                depth -= 1;
-                if depth < 0 { return None; }
-                i += 1;
-            }
-            b'"' => {
-                i += 1;
-                let mut buf = Vec::new();
-                while i < b.len() && b[i] != b'"' {
-                    if b[i] == b'\\' {
-                        i += 1;
-                        if i >= b.len() { return None; }
-                    }
-                    buf.push(b[i]);
-                    i += 1;
-                }
-                if i >= b.len() { return None; }
-                i += 1; // closing quote
-                if depth == 1 {
-                    let mut j = i;
-                    while j < b.len() && b[j].is_ascii_whitespace() { j += 1; }
-                    if b.get(j) == Some(&b':') {
-                        set.insert(String::from_utf8_lossy(&buf).into_owned());
-                    }
-                }
-            }
-            _ => i += 1,
-        }
-    }
-    (opened && depth == 0).then_some(set)
+// One package name per line. Blank lines, '#' comments and anything after whitespace
+// are ignored, so "com.foo # shooter" and "com.foo" both give "com.foo".
+fn parse_list(text: &str) -> BTreeSet<String> {
+    text.lines()
+        .map(|l| l.split('#').next().unwrap_or(""))
+        .map(|l| l.split_whitespace().next().unwrap_or(""))
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect()
 }
 
 pub(crate) fn reload_list() {
     let text = match fs::read_to_string(LIST_FILE) {
         Ok(t) => t,
-        Err(e) => { warn!("applist unreadable ({LIST_FILE}): {e}"); return; }
+        Err(e) => { warn!("gamelist unreadable ({LIST_FILE}): {e}"); return; }
     };
-    let Some(new) = parse_keys(&text) else {
-        warn!("applist.json invalid ({} bytes), keeping the old list", text.len());
-        return;
-    };
+    let new = parse_list(&text);
     let total = new.len();
     let (added, removed, dropped) = {
         let mut g = st();
@@ -72,19 +35,19 @@ pub(crate) fn reload_list() {
         let added: Vec<String> = new.difference(&s.list).cloned().collect();
         let removed: Vec<String> = s.list.difference(&new).cloned().collect();
         s.list = new;
-        // active app was removed from the applist -> fallback
+        // active app was removed from the gamelist -> fallback
         let mut dropped = None;
         if matches!(&s.active, Some((p, _)) if !s.list.contains(p)) {
             dropped = s.active.take().map(|(p, _)| p);
         }
         (added, removed, dropped)
     };
-    info!("applist loaded: {total} packages (+{} -{})", added.len(), removed.len());
-    if !added.is_empty() { info!("applist added: {}", added.join(", ")); }
-    if !removed.is_empty() { info!("applist removed: {}", removed.join(", ")); }
-    if let Some(p) = dropped { info!("active app {p} removed from applist, falling back"); }
-    debug!("full applist: {}", st().list.iter().cloned().collect::<Vec<_>>().join(", "));
-    adopt("applist changed");
+    info!("gamelist loaded: {total} packages (+{} -{})", added.len(), removed.len());
+    if !added.is_empty() { info!("gamelist added: {}", added.join(", ")); }
+    if !removed.is_empty() { info!("gamelist removed: {}", removed.join(", ")); }
+    if let Some(p) = dropped { info!("active app {p} removed from gamelist, falling back"); }
+    debug!("full gamelist: {}", st().list.iter().cloned().collect::<Vec<_>>().join(", "));
+    adopt("gamelist changed");
 }
 
 // inotify on the directory (editors often replace files via rename). The thread sleeps in read().

@@ -1,7 +1,11 @@
 [package]
-name = "sys.azenith-service"
+name = "sys_azenithrs-service"
 version = "1.0.0"
 edition = "2024"
+
+# The installed name is sys.azenith-service (renamed in the packaging step):
+# sys.azenith-profilesettings refuses to run unless the caller cmdline contains
+# "sys.azenith-service".
 
 [dependencies]
 fs2 = "0.4"

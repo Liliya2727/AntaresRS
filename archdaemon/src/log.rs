@@ -5,8 +5,8 @@ use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Mutex;
 
-pub(crate) const LOG_FILE: &str = "/data/adb/.libBinding/binder.log";
-const DEBUG_FLAG: &str = "/data/adb/.libBinding/debug";
+pub(crate) const LOG_FILE: &str = "/data/adb/.config/AntaresRS/binder.log";
+const DEBUG_FLAG: &str = "/data/adb/.config/AntaresRS/debug";
 const LOG_MAX: u64 = 256 * 1024;
 
 #[derive(Clone, Copy)]

@@ -32,6 +32,7 @@ cleanup_modules() {
 
     rm -rf \
         "/data/adb/.config/AZenith" \
+        "/data/adb/.config/AntaresRS" \
         "/data/AZenith" \
         "/data/data/zx.azenith"
 

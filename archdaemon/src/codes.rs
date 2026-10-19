@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use crate::log::{debug, error, info, warn};
 
-const APK_PATH: &str = "/data/adb/.libBinding/binder_resolver.apk";
+const APK_PATH: &str = "/data/adb/.config/AntaresRS/binder_resolver.apk";
 const RESOLVER_APK: &[u8] = include_bytes!("../binder_resolver.apk");
 
 pub(crate) struct Codes {

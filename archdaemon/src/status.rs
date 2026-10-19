@@ -125,6 +125,7 @@ fn watch_status() {
         refresh_saver("status cycle");
         refresh_zen("status cycle");
         refresh_battery("status cycle");
+        crate::profiler::tick(); // drops performance when the screen-off grace period expires
         thread::sleep(STATUS_POLL);
     });
 }

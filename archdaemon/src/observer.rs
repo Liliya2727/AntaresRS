@@ -58,12 +58,12 @@ pub(crate) unsafe extern "C" fn on_observer(_b: P, code: u32, inp: P, _o: P) -> 
                             if same {
                                 if let Some((_, pids)) = &mut s.active { pids.insert(pid); }
                             } else {
-                                info!("applist app went to foreground: {pkg} (pid {pid})");
+                                info!("gamelist app went to foreground: {pkg} (pid {pid})");
                                 s.active = Some((pkg, BTreeSet::from([pid])));
                             }
                             apply(s, "foreground");
                         } else {
-                            debug!("fg pkg {pkg} not in applist, ignored");
+                            debug!("fg pkg {pkg} not in gamelist, ignored");
                         }
                     }
                     None => debug!("fg uid={uid}: package name not found"),
