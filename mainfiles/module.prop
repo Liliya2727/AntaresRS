@@ -1,8 +1,8 @@
 id=AZenith
-name=AZenith火
+name=AntaresRS火
 version=
 versionCode=
-author=@Zexshia X @kanaochar
+author=ArchHaven Developers
 description=One, Two, Three! AZenith has arrived!
-updateJson=https://raw.githubusercontent.com/Liliya2727/Antares/main/update.json
-banner=https://raw.githubusercontent.com/Liliya2727/Antares/refs/heads/main/AZenithBanner.png
+updateJson=https://raw.githubusercontent.com/Liliya2727/AntaresRS/main/update.json
+banner=module.banner.jpg
