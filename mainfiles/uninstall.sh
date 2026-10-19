@@ -41,10 +41,8 @@ for prop in $props; do
   resetprop --delete "$prop"
 done
 # Uninstall module directories
-rm -rf /data/local/tmp/module_icon.png
-rm -rf /data/adb/.config/AZenith
 rm -rf /data/adb/.config/AntaresRS
-rm -rf /data/AZenith
+
 # Uninstaller Script
 manager_paths="/data/adb/ap/bin /data/adb/ksu/bin"
 binaries="sys.azenith-service sys.azenith-service_log \

@@ -17,46 +17,12 @@
 #
 
 readonly MODDIR="${0%/*}"
-readonly MODULE_CONFIG="/data/adb/.config/AZenith"
 readonly BIN_SVC="$MODDIR/system/bin/sys.azenith-service"
-readonly APK_COMP="$MODDIR/AZenith.apk"
 
 # Wait boot to complete
 until [ "$(getprop sys.boot_completed)" = "1" ]; do 
     sleep 1
 done
-
-# Reset anti bootloop
-echo "BOOTCOUNT=0" > "$MODDIR/count.sh"
-
-# Clear Old Logs
-"$BIN_SVC" --clearlogs
-
-# Remove reboot flag
-if [ -f "$MODDIR/reboot" ]; then
-    rm -f "$MODDIR/reboot"
-fi
-
-# Create Cleanup Files
-if [ ! -f /data/adb/service.d/.azenith_cleanup.sh ]; then
-  mkdir -p /data/adb/service.d
-  cat "$MODDIR/cleanup.sh" > /data/adb/service.d/.azenith_cleanup.sh
-  chmod +x /data/adb/service.d/.azenith_cleanup.sh
-fi
-
-# Refresh AZenith daemon state
-STATE=$(getprop persist.sys.azenith.state)
-{ [ -z "$STATE" ] || { [ "$STATE" = "running" ] && [ -z "$(/system/bin/toybox pidof sys.azenith-service)" ]; }; } && {
-    setprop persist.sys.azenith.state stopped
-    setprop persist.sys.azenith.service ""
-}
-
-# Exec Java Companion Daemon
-nohup app_process -Djava.class.path="$APK_COMP" / \
-    --nice-name=sys.azenith-appmonitoring zx.azenith.AppMonitor \
-    "$MODULE_CONFIG/app_status" \
-    "$MODULE_CONFIG/background_apps" \
-    "$MODULE_CONFIG/java.lock" >"$MODULE_CONFIG/sysmon.log" 2>&1 &
 
 # Run AZenith service
 sleep 1 && exec "$BIN_SVC" --run
