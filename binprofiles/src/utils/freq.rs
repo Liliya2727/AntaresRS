@@ -99,13 +99,13 @@ pub fn setfreqppm() {
             
                 let new_maxfreq = which_midfreq(&avail_file).unwrap_or(new_maxfreq);
             
-                write_lock(&format!("{} {}", cluster, new_maxfreq), "/proc/ppm/policy/hard_userlimit_max_cpu_freq");
-                write_lock(&format!("{} {}", cluster, cpu_minfreq), "/proc/ppm/policy/hard_userlimit_min_cpu_freq");
+                write_unlock(&format!("{} {}", cluster, new_maxfreq), "/proc/ppm/policy/hard_userlimit_max_cpu_freq");
+                write_unlock(&format!("{} {}", cluster, cpu_minfreq), "/proc/ppm/policy/hard_userlimit_min_cpu_freq");
             
                 log_debug("cpu", &format!("set policy={} maxfreq={} minfreq={}", policy_name, new_maxfreq, cpu_minfreq));
             } else {
-                write_lock(&format!("{} {}", cluster, new_maxfreq), "/proc/ppm/policy/hard_userlimit_max_cpu_freq");
-                write_lock(&format!("{} {}", cluster, cpu_minfreq), "/proc/ppm/policy/hard_userlimit_min_cpu_freq");
+                write_unlock(&format!("{} {}", cluster, new_maxfreq), "/proc/ppm/policy/hard_userlimit_max_cpu_freq");
+                write_unlock(&format!("{} {}", cluster, cpu_minfreq), "/proc/ppm/policy/hard_userlimit_min_cpu_freq");
 
                 log_debug("cpu", &format!("set policy={} maxfreq={} minfreq={}", policy_name, new_maxfreq, cpu_minfreq));
             }
@@ -186,9 +186,9 @@ pub fn setgamefreqppm() {
 
             let max_node = "/proc/ppm/policy/hard_userlimit_max_cpu_freq";
             let min_node = "/proc/ppm/policy/hard_userlimit_min_cpu_freq";
-            write_lock(&format!("{} {}", cluster, freq), max_node);
-            write_lock(&format!("{} {}", cluster, freq), min_node);
-            write_lock(&format!("{} {}", cluster, freq), max_node);
+            write_unlock(&format!("{} {}", cluster, freq), max_node);
+            write_unlock(&format!("{} {}", cluster, freq), min_node);
+            write_unlock(&format!("{} {}", cluster, freq), max_node);
 
             log_debug("cpu", &format!("set policy={} maxfreq={} minfreq={}", policy_name, freq, freq));
             cluster += 1;
