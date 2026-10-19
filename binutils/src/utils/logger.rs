@@ -18,15 +18,15 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::process::Command;
+use std::os::unix::io::AsRawFd;
 use crate::utils::get_debugmode;
 
-pub const LOG_FILE:     &str = "/data/adb/.config/AZenith/debug/AZenith.log";
-pub const VERBOSE_FILE: &str = "/data/adb/.config/AZenith/debug/AZenithVerbose.log";
-const     LOG_DIR:      &str = "/data/adb/.config/AZenith/debug";
+pub const LOG_DIR:      &str = "/data/adb/.config/AntaresRS";
+pub const LOG_FILE:     &str = "/data/adb/.config/AntaresRS/AZenith.log";
+pub const VERBOSE_FILE: &str = "/data/adb/.config/AntaresRS/AZenithVerbose.log";
 
 /// Rotate once a file crosses this size, keeping LOG_KEEP_FILES generations
-/// (<file>.1 .. <file>.N). Mirrors the C daemon's rotation policy.
+/// (<file>.1 .. <file>.N). Keeps every AntaresRS binary's rotation identical.
 const LOG_MAX_BYTES: u64 = 512 * 1024;
 const LOG_KEEP_FILES: usize = 2;
 
@@ -53,11 +53,19 @@ fn android_log(priority: i32, tag: &str, message: &str) {
 }
 
 fn timestamp() -> String {
-    Command::new("date")
-        .arg("+%Y-%m-%d %H:%M:%S.%3N")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|_| String::from("0000-00-00 00:00:00.000"))
+    unsafe {
+        let mut t: libc::timespec = std::mem::zeroed();
+        if libc::clock_gettime(libc::CLOCK_REALTIME, &raw mut t) != 0 {
+            return String::from("0000-00-00 00:00:00.000");
+        }
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&raw const t.tv_sec, &raw mut tm).is_null() {
+            return String::from("0000-00-00 00:00:00.000");
+        }
+        let mut buf = [0u8; 32];
+        let n = libc::strftime(buf.as_mut_ptr() as *mut c_char, buf.len(), c"%Y-%m-%d %H:%M:%S".as_ptr(), &raw const tm);
+        format!("{}.{:03}", String::from_utf8_lossy(&buf[..n]), t.tv_nsec / 1_000_000)
+    }
 }
 
 fn ensure_dir() {
@@ -84,11 +92,15 @@ fn rotate_if_needed(path: &str) {
 fn append(path: &str, line: &str) {
     rotate_if_needed(path);
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        let fd = f.as_raw_fd();
+        unsafe { libc::flock(fd, libc::LOCK_EX) };
         let _ = f.write_all(line.as_bytes());
+        unsafe { libc::flock(fd, libc::LOCK_UN) };
     }
 }
 
 fn fmt_line(level: &str, component: &str, message: &str) -> String {
+    let component = if component.is_empty() { "utility" } else { component };
     format!("{} {} [{}] {}\n", timestamp(), level, component, message)
 }
 

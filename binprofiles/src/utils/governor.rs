@@ -116,7 +116,7 @@ pub fn init_cpu_governor() {
         setprop_cmd("persist.sys.azenith.custom_performance_cpu_gov", &performance_gov);
     }
     
-    log_info("cpu", "governor init complete");
+    log_info("cpu", "governor: init complete");
 }
 
 pub fn init_io_scheduler() {
@@ -131,7 +131,7 @@ pub fn init_io_scheduler() {
     }
 
     if io_path.is_empty() {
-        log_warn("io", "no block device with scheduler found");
+        log_warn("io", "no block device with scheduler found, cannot tune io");
         std::process::exit(1);
     }
 
@@ -167,7 +167,7 @@ pub fn init_io_scheduler() {
         setprop_cmd("persist.sys.azenith.custom_performance_IO", &default_io);
     }
     
-    log_info("io", "io scheduler init complete");
+    log_info("io", "scheduler: init complete");
 }
 
 pub fn init_maligpu_governor() {
@@ -213,7 +213,7 @@ pub fn init_maligpu_governor() {
         setprop_cmd("persist.sys.azenith.custom_performance_maligpu_gov", &default_maligpu_gov);
     }
 
-    log_info("gpu", "mali governor init complete");
+    log_info("gpu", "governor: init complete");
 }
 
 pub fn setrender(renderer: &str) {
@@ -224,7 +224,7 @@ pub fn setrender(renderer: &str) {
         setprop("debug.skia.threaded_mode", "");
         resetprop("ro.hwui.use_vulkan", ""); 
         
-        log_info("renderer", "resetting renderers to default");
+        log_info("renderer", "reset to default");
         return;
     }
 
@@ -274,7 +274,7 @@ pub fn init_renderer() {
     let renderer = getprop("persist.sys.azenithconf.renderer");
     
     if renderer.is_empty() || renderer.eq_ignore_ascii_case("default") {
-        log_info("renderer", "renderer is default, skipping setup");
+        log_info("renderer", "default renderer, skipping setup");
         return;
     }
     

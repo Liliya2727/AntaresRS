@@ -61,7 +61,7 @@ fn join_u64(nums: &[u64]) -> String {
 }
 
 fn apply_jit() {
-    log_info("Applying JIT Compiler");
+    log_info("jit", "applying speed-profile to user apps");
 
     let output = Command::new("cmd")
         .args(["package", "list", "packages", "-3"])
@@ -88,7 +88,7 @@ fn apply_jit() {
                 .map(|s| s.success())
                 .unwrap_or(false);
             if ok {
-                log_verbose(&format!("{} | Success", pkg));
+                log_verbose("jit", &format!("compiled pkg={}", pkg));
             }
         }));
     }
@@ -154,7 +154,7 @@ fn settunes(policy_path: &str) {
 }
 
 fn apply_schedtunes() {
-    log_info("Applying Schedtunes for Schedutil and Schedhorizon");
+    log_info("schedtunes", "applying for schedutil/schedhorizon");
 
     if let Ok(paths) = glob::glob("/sys/devices/system/cpu/cpufreq/policy*") {
         for path in paths.flatten() {
@@ -170,7 +170,7 @@ fn setwalt(policy_path: &str, params: &WaltParams) {
     let walt = format!("{}/walt", policy_path);
     let walt_path = std::path::Path::new(&walt);
     if !walt_path.is_dir() {
-        log_verbose(&format!("Skipped: {} (WALT NA)", policy_path));
+        log_verbose("walt", &format!("skipped path={} reason=no_walt_node", policy_path));
         return;
     }
 
@@ -225,7 +225,7 @@ fn setwalt(policy_path: &str, params: &WaltParams) {
     write_val(&params.wr_up.to_string(), &format!("{}/up_rate_limit_us", walt), true);
     write_val(&params.wr_dn.to_string(), &format!("{}/down_rate_limit_us", walt), true);
 
-    log_info(&format!("WALT Tuning Applied on {}", policy_path.rsplit('/').next().unwrap_or(policy_path)));
+    log_info("walt", &format!("params applied policy={}", policy_path.rsplit('/').next().unwrap_or(policy_path)));
 }
 
 struct WaltParams {
@@ -238,7 +238,7 @@ struct WaltParams {
 }
 
 fn apply_walt() {
-    log_info("Applying WALT governor tuning");
+    log_info("walt", "applying governor tuning");
 
     let params = WaltParams {
         wr_up: 8000,
@@ -259,7 +259,7 @@ fn apply_walt() {
 }
 
 fn apply_fpsged() {
-    log_info("Applying FPSGO Parameters");
+    log_info("fpsgo", "applying FPSGO/GED parameters");
 
     let ged_params = [
         ("ged_smart_boost", "1"),
@@ -307,7 +307,7 @@ fn apply_fpsged() {
 }
 
 fn apply_mali_sched() {
-    log_info("Applying GPU Mali Sched");
+    log_info("gpu", "applying mali sched parameters");
 
     let m_sched = glob::glob("/sys/devices/platform/soc/*mali*/scheduling")
         .ok()
@@ -399,7 +399,7 @@ fn get_cpu_load() -> f64 {
 }
 
 fn apply_surfaceflinger() {
-    log_info("Applying SurfaceFlinger Latency");
+    log_info("sf", "applying SurfaceFlinger latency tuning");
 
     let refresh_rate = get_stable_refresh_rate();
     let frame_duration_ns = (1_000_000_000f64 / refresh_rate as f64).round() as i64;
@@ -426,8 +426,8 @@ fn apply_surfaceflinger() {
 
     if dead_time < min_margin {
         let adjustment = min_margin - dead_time;
-        log_verbose(&format!(
-            "Optimization: Adjusted app duration by -{}ns for dynamic margin",
+        log_verbose("sf", &format!(
+            "adjusted app_duration by -{}ns for dynamic margin",
             adjustment
         ));
         let new_app_duration = app_duration - adjustment;
@@ -562,7 +562,7 @@ fn thermal_prop_matches(key: &str) -> bool {
 }
 
 fn apply_disable_thermal() {
-    log_info("Disabling Thermal Engine");
+    log_info("thermal", "disabling thermal engine");
 
     let _ = Command::new("pkill")
         .args(["-9", "-f", "thermald|thermal-engine|mtk_thermal"])
@@ -631,7 +631,7 @@ fn apply_disable_thermal() {
 
     write_val("stop 1", "/proc/mtk_batoc_throttling/battery_oc_protect_stop", true);
 
-    log_verbose("Thermal is disabled");
+    log_verbose("thermal", "thermal engine disabled");
 }
 
 fn bracket_key(line: &str) -> Option<String> {
@@ -656,7 +656,7 @@ fn truncate_tracing_files(dir: &std::path::Path) {
 }
 
 fn apply_disable_trace() {
-    log_info("Applying disable trace");
+    log_info("trace", "disabling kernel/userspace tracing");
 
     truncate_tracing_files(std::path::Path::new("/sys/kernel/tracing"));
 
@@ -681,7 +681,7 @@ fn apply_disable_trace() {
 
 fn apply_logd() {
     if state_enabled(&get_state("persist.sys.azenithconf.logd")) {
-        log_info("Applying Kill Logd");
+        log_info("logd", "stopping logger services");
         for logger in &LIST_LOGGER {
             let _ = Command::new("stop").arg(logger).status();
         }

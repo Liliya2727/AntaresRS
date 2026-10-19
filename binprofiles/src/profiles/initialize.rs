@@ -115,5 +115,5 @@ pub fn initialize() {
     // Final Sync & Logs
     let _ = Command::new("sync").status();
     log_debug("profiles", "init phase complete");
-    log_info("profiles", "initializing complete");
+    log_info("profiles", "initialization complete");
 }

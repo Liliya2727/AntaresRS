@@ -16,7 +16,7 @@ use std::ptr::null_mut;
 
 use crate::applist::{reload_list, watch_list, LIST_DIR};
 use crate::codes::{codes, load_codes, set_codes};
-use crate::log::{debug, error, info, level_name, log_init, warn};
+use crate::log::{clear_logs, debug, error, info, level_name, log_init, warn};
 use crate::ndk::{call, class, n, service};
 use crate::observer::{on_am_died, on_observer, set_pm};
 use crate::profiler::API_DIR;
@@ -28,8 +28,7 @@ pub(crate) const OUT_DIR: &str = "/data/adb/.config/AntaresRS";
 fn main() {
     if unsafe { libc::getuid() } != 0 { eprintln!("run as root"); std::process::exit(1); }
     if std::env::args().any(|a| a == "--clearlogs") {
-        let _ = fs::remove_file(crate::log::LOG_FILE);
-        let _ = fs::remove_file(format!("{}.old", crate::log::LOG_FILE));
+        clear_logs();
         return;
     }
     let _ = fs::create_dir_all(OUT_DIR);
@@ -51,7 +50,7 @@ fn main() {
         Err(e) => warn!("cannot open {lock_path}: {e} (running without instance lock)"),
     }
     log_init();
-    info!("libBinding start (pid {}, log level {})", std::process::id(), level_name());
+    info!("daemon starting (pid {}, log level {})", std::process::id(), level_name());
 
     let Some(c) = load_codes() else {
         error!("failed to resolve transaction codes (check binder_resolver.apk)");

@@ -15,7 +15,7 @@ Config root: `/data/adb/.config/AntaresRS/`
 | `API/current_profile` | current profile mode (`1` performance, `2` balanced, `3` eco) |
 | `API/gameinfo` | `<pkg> <pid> <uid>` + `Time: HH:MM:SS`, or `NULL 0 0` |
 | `active_app`, `cur_prof`, `state.toml` | active package, profile mode, full daemon state |
-| `binder.log`, `debug` | log file and debug-level flag |
+| `AZenith.log`, `AZenithVerbose.log`, `debug` | shared log files and debug-level flag |
 
 Profile switching:
 

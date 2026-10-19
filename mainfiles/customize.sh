@@ -38,7 +38,6 @@ ui_print "- Installing Antares..."
 
 # Extract Module Directiories
 mkdir -p "$MODULE_CONFIG"
-mkdir -p "$MODULE_CONFIG/debug"
 mkdir -p "$MODULE_CONFIG/API"
 mkdir -p "$MODULE_CONFIG/preload"
 mkdir -p "$ANTARES_CONFIG/API"

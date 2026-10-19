@@ -26,12 +26,12 @@ pub fn write_unlock_core(value: &str, path_str: &str, lock: bool) {
     let val_with_newline = format!("{}\n", value);
     
     if fs::write(path, val_with_newline).is_err() {
-        log_warn("prop", &format!("write failed path=/{} reason=permission_denied", pathname));
+        log_warn("sysfs", &format!("write failed path=/{} reason=permission_denied", pathname));
         if lock { chmod(path_str, 0o444); }
         return;
     }
 
-    log_debug("prop", &format!("set path=/{} value={}", pathname, value));
+    log_debug("sysfs", &format!("set path=/{} value={}", pathname, value));
     if lock { chmod(path_str, 0o444); }
 }
 

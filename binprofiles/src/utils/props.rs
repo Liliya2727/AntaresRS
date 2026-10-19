@@ -8,7 +8,7 @@ use crate::android_ffi;
 use crate::utils::logging::log_error;
 use std::fs;
 
-pub const CONFIG_PATH: &str = "/data/adb/.config/AZenith";
+pub const CONFIG_PATH: &str = "/data/adb/.config/AntaresRS";
 
 /// Returns the property value, or `""` when unset/empty.
 pub fn getprop(key: &str) -> String {

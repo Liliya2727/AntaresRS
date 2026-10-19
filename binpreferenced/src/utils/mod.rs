@@ -20,6 +20,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub mod logger;
+pub use crate::utils::logger::{log_info, log_verbose};
+
 static DEBUGMODE: AtomicBool = AtomicBool::new(false);
 
 pub fn init_debugmode() {
@@ -50,20 +53,6 @@ pub fn resetprop(key: &str, val: &str) {
         .status();
 }
 
-pub fn log_verbose(message: &str) {
-    if debugmode() {
-        let _ = Command::new("sys.azenith-service")
-            .args(["--verboselog", "AZenith_Prefs", "0", message])
-            .status();
-    }
-}
-
-pub fn log_info(message: &str) {
-    let _ = Command::new("sys.azenith-service")
-        .args(["--log", "AZenith_Prefs", "1", message])
-        .status();
-}
-
 pub fn chmod(path: &str, mode: u32) {
     if let Ok(metadata) = fs::metadata(path) {
         let mut perms = metadata.permissions();
@@ -89,7 +78,7 @@ pub fn write_val(value: &str, path_str: &str, lock: bool) -> bool {
     let pathname = if parent_name.is_empty() { file_name.into_owned() } else { format!("{}/{}", parent_name, file_name) };
 
     if !path.exists() {
-        log_verbose(&format!("File /{} not found, skipping...", pathname));
+        log_verbose("write", &format!("skipped path=/{} reason=not_found", pathname));
         return false;
     }
 
@@ -98,12 +87,12 @@ pub fn write_val(value: &str, path_str: &str, lock: bool) -> bool {
     let val_with_newline = format!("{}\n", value);
 
     if fs::write(path, val_with_newline).is_err() {
-        log_verbose(&format!("Cannot write to /{} (permission denied)", pathname));
+        log_verbose("write", &format!("failed path=/{} reason=permission_denied", pathname));
         if lock { chmod(path_str, 0o444); }
         return false;
     }
 
-    log_verbose(&format!("Set /{} to {}", pathname, value));
+    log_verbose("write", &format!("set path=/{} value={}", pathname, value));
     if lock { chmod(path_str, 0o444); }
     true
 }

@@ -18,11 +18,11 @@ use std::io::Write;
 use std::os::raw::c_int;
 use std::os::unix::io::AsRawFd;
 
-/// Main rotating log — the same file the daemon appends to.
-const LOG_FILE: &str = "/data/adb/.config/AZenith/debug/AZenith.log";
+/// Main rotating log — the same file every AntaresRS binary appends to.
+const LOG_FILE: &str = "/data/adb/.config/AntaresRS/AZenith.log";
 /// Verbose log for DEBUG detail.
-const VERBOSE_FILE: &str = "/data/adb/.config/AZenith/debug/AZenithVerbose.log";
-const LOG_DIR: &str = "/data/adb/.config/AZenith/debug";
+const VERBOSE_FILE: &str = "/data/adb/.config/AntaresRS/AZenithVerbose.log";
+const LOG_DIR: &str = "/data/adb/.config/AntaresRS";
 
 /// Logcat tag the daemon uses for companion binaries (`LOG_TAG_PROFILE`).
 const LOGCAT_TAG: &str = "AZenith_Profiles";
