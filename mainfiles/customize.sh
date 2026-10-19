@@ -17,13 +17,13 @@
 SKIPUNZIP=1
 
 # Paths
-MODULE_CONFIG="/data/adb/.config/AZenith"
-ANTARES_CONFIG="/data/adb/.config/AntaresRS"
+MODULE_CONFIG="/data/adb/.config/AntaresRS"
+ANTARES_CONFIG="$MODULE_CONFIG"
 device_codename=$(getprop ro.product.board)
 chip=$(getprop ro.hardware)
 
 # Binaries shipped inside libs/<abi>/ and installed to system/bin
-ANTARES_BINS="sys.azenith-service sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferencedtweaks sys.azenith-preloadbin sys.azenith-preloadbin2"
+ANTARES_BINS="sys.azenith-service sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferencedtweaks sys.azenith-preloadbin"
 
 # Create File
 make_node() {
@@ -32,9 +32,9 @@ make_node() {
 
 # Displaybanner
 ui_print ""
-ui_print "              AZenith              "
+ui_print "              Antares              "
 ui_print ""
-ui_print "- Installing AZenith..."
+ui_print "- Installing Antares..."
 
 # Extract Module Directiories
 mkdir -p "$MODULE_CONFIG"
@@ -69,9 +69,6 @@ fi
 case $ARCH in
 "arm64") ARCH_TMP="arm64-v8a" ;;
 "arm") ARCH_TMP="armeabi-v7a" ;;
-"x64") ARCH_TMP="x86_64" ;;
-"x86") ARCH_TMP="x86" ;;
-"riscv64") ARCH_TMP="riscv64" ;;
 *) abort ;;
 esac
 
@@ -149,25 +146,6 @@ esac
 # 5) Tensor
 # 0) Unknown
 
-# Extract Webui
-ui_print "- Extracting WebUI"
-mkdir -p "$MODPATH/webroot"
-unzip -o "$ZIPFILE" "webroot/*" -d "$TMPDIR" >&2
-if [ -d "$TMPDIR/webroot" ]; then
-    cp -r "$TMPDIR"/webroot/* "$MODPATH/webroot/"
-    rm -rf "$TMPDIR/webroot"
-else
-    ui_print "- No WebUI in this build, skipping"
-fi
-
-# Make Module Config
-ui_print "- Creating Module Config"
-make_node "1000 1000 1000 1000" "$MODULE_CONFIG/color_scheme"
-make_node "Disabled 90% 80% 70% 60% 50% 40%" "$MODULE_CONFIG/availableFreq"
-make_node "Disabled" "$MODULE_CONFIG/customFreqOffset"
-make_node "Disabled 60hz 90hz 120hz" "$MODULE_CONFIG/availableValue"
-make_node "Disabled" "$MODULE_CONFIG/customVsync"
-
 # Set config properties to use
 ui_print "- Setting config properties..."
 props="
@@ -196,26 +174,9 @@ if [ -z "$(getprop persist.sys.azenithconf.showtoast)" ]; then
     setprop persist.sys.azenithconf.showtoast 1
 fi
 
-# Install toast if not installed
-if pm list packages | grep -q bellavita.toast; then
-    ui_print "- Bellavita Toast is already installed."
-elif unzip -l "$ZIPFILE" toast.apk >/dev/null 2>&1; then
-    ui_print "- Extracting Bellavita Toast..."
-    unzip -qo "$ZIPFILE" toast.apk -d "$MODPATH" >&2
-    ui_print "- Installing Bellavita Toast..."
-    pm install "$MODPATH/toast.apk"
-    rm "$MODPATH/toast.apk"
-else
-    ui_print "- Bellavita Toast not bundled, skipping"
-fi
-
 # Make sure to enable Auto Every installment and Update
 ui_print "- Enabling Auto Mode"
 setprop persist.sys.azenithconf.AIenabled 1
-
-# Clean Up useless files
-ui_print "- Cleaning Up..."
-rm -rf "$MODPATH/webroot/include"
 
 # Set Permissions
 ui_print "- Setting Permissions..."

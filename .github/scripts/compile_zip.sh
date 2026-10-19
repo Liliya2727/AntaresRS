@@ -61,8 +61,6 @@ for abi in arm64-v8a armeabi-v7a x86 x86_64; do
 
 	# vmtouch clone, ndk-build output
 	cp "preloadbin/libs/$abi/sys.azenith-preloadbin" "$out/sys.azenith-preloadbin"
-	# a second name is expected by the daemon/manager scripts
-	cp "preloadbin/libs/$abi/sys.azenith-preloadbin" "$out/sys.azenith-preloadbin2"
 
 	echo "Staged $abi: $(ls "$out" | tr '\n' ' ')"
 done
