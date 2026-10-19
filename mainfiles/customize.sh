@@ -59,10 +59,6 @@ ui_print "- Extracting uninstall.sh..."
 extract "$ZIPFILE" uninstall.sh "$MODPATH"
 ui_print "- Extracting gamelist.txt..."
 extract "$ZIPFILE" gamelist.txt "$ANTARES_CONFIG/gamelist"
-if unzip -l "$ZIPFILE" module_icon.png >/dev/null 2>&1; then
-    ui_print "- Extracting module_icon.png..."
-    extract "$ZIPFILE" module_icon.png /data/local/tmp
-fi
 
 # Target architecture
 case $ARCH in
