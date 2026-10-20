@@ -22,8 +22,10 @@ ANTARES_CONFIG="$MODULE_CONFIG"
 device_codename=$(getprop ro.product.board)
 chip=$(getprop ro.hardware)
 
-# Binaries shipped inside libs/<abi>/ and installed to system/bin
-ANTARES_BINS="sys.azenith-service sys.azenith-profilesettings sys.azenith-utilityconf sys.azenith-preferencedtweaks sys.azenith-preloadbin"
+# Binaries shipped inside libs/<abi>/ and installed to system/bin. One file is
+# enough now: sys.azenith-service also serves the profiles / utility /
+# preference / preload subcommands.
+ANTARES_BINS="sys.azenith-service"
 
 # Create File
 make_node() {

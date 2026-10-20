@@ -46,16 +46,10 @@ for abi in arm64-v8a armeabi-v7a; do
 	out="mainfiles/libs/$abi"
 	mkdir -p "$out"
 
-	# The daemon is installed as sys.azenith-service: sys.azenith-profilesettings
-	# refuses to run unless the caller cmdline contains "sys.azenith-service".
-	# (cargo cannot emit a binary name with a dot, hence the rename here)
+	# Everything (daemon + profiles / utility / preference / preload
+	# subcommands) is this one binary now: the daemon is installed as
+	# sys.azenith-service, and the subcommands re-exec /proc/self/exe.
 	cp "archdaemon/target/$rust_target/release/sys_azenithrs-service" "$out/sys.azenith-service"
-	cp "binprofiles/target/$rust_target/release/azenith-profilesettings" "$out/sys.azenith-profilesettings"
-	cp "binutils/target/$rust_target/release/azenith-utilityconf" "$out/sys.azenith-utilityconf"
-	cp "binpreferenced/target/$rust_target/release/azenith-preferencedtweaks" "$out/sys.azenith-preferencedtweaks"
-
-	# vmtouch clone, ndk-build output
-	cp "preloadbin/libs/$abi/sys.azenith-preloadbin" "$out/sys.azenith-preloadbin"
 
 	echo "Staged $abi: $(ls "$out" | tr '\n' ' ')"
 done

@@ -13,10 +13,6 @@ on:
       - ".github/scripts/**"
       - "archdaemon/**"
       - "binder_resolver/**"
-      - "binprofiles/**"
-      - "binutils/**"
-      - "binpreferenced/**"
-      - "preloadbin/**"
       - "mainfiles/**"
       - "gamelist.txt"
       - "version"
@@ -37,8 +33,9 @@ jobs:
 
       # ------------------------------------------------------------------
       # 1. binder_resolver APK (release, unsigned)
-      #    archdaemon embeds this APK with include_bytes!("../binder_resolver.apk"),
-      #    so it has to exist before the Rust binaries are built.
+      #    archdaemon embeds this APK with include_bytes!("../../binder_resolver.apk")
+      #    (src/daemon/codes.rs -> archdaemon/binder_resolver.apk), so it has to
+      #    exist before the Rust binaries are built.
       # ------------------------------------------------------------------
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -63,7 +60,7 @@ jobs:
           ls -l archdaemon/binder_resolver.apk
 
       # ------------------------------------------------------------------
-      # 2. Rust binaries: archdaemon + binprofiles/binutils/binpreferenced
+      # 2. Rust binary: archdaemon (daemon + companion subcommands)
       # ------------------------------------------------------------------
       - name: NDK Setup
         uses: nttld/setup-ndk@v1.6.0
@@ -88,31 +85,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # sys.azenith-service carries everything the four old binaries did:
+      # profilesettings / utilityconf / preferencedtweaks / preload are
+      # subcommands of this same executable.
       - name: Build ArchDaemon (sys.azenith-service)
         working-directory: ./archdaemon
         run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
 
-      - name: Build Profilesettings (sys.azenith-profilesettings)
-        working-directory: ./binprofiles
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-
-      - name: Build Utilityconf (sys.azenith-utilityconf)
-        working-directory: ./binutils
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-
-      - name: Build Preferencedtweaks (sys.azenith-preferencedtweaks)
-        working-directory: ./binpreferenced
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-
       # ------------------------------------------------------------------
-      # 3. Preload binary (C, ndk-build)
-      # ------------------------------------------------------------------
-      - name: Compile Preload Binary
-        working-directory: ./preloadbin
-        run: ndk-build APP_ABI="arm64-v8a armeabi-v7a"
-
-      # ------------------------------------------------------------------
-      # 4. Flashable ZIP
+      # 3. Flashable ZIP
       # ------------------------------------------------------------------
       - name: Compile Flashable Zip
         id: compileZip

@@ -1,36 +1,69 @@
 // libBinding — AZenith status & profile daemon, pure binder (no shell fork).
-// Module layout follows encore/jni/: ndk (BinderNDK), codes+status (BinderMonitor),
-// observer (BinderMonitor/ProcessUtility), applist (GameRegistry/InotifyWatcher),
-// profiler (profile/*.c), log (EncoreLog).
-mod applist;
-mod codes;
-mod log;
-mod ndk;
-mod observer;
-mod profiler;
-mod state;
-mod status;
+//
+//   daemon/   the binder engine (ndk, codes, observer, applist, status, state, profiler)
+//   cmd/      the companion commands merged into this binary (profilesettings, ...)
+//   common/   log writer, property/fs/shell helpers shared by both
+mod cmd;
+mod common;
+mod daemon;
 
 use std::fs;
 use std::ptr::null_mut;
 
-use crate::applist::{reload_list, watch_list, LIST_DIR};
-use crate::codes::{codes, load_codes, set_codes};
-use crate::log::{clear_logs, debug, error, info, level_name, log_init, warn};
-use crate::ndk::{call, class, n, service};
-use crate::observer::{on_am_died, on_observer, set_pm};
-use crate::profiler::API_DIR;
-use crate::state::adopt;
-use crate::status::init_status;
+use crate::cmd::preload::{self, PRELOAD};
+use crate::common::log::{clear_logs, comp, debug, error, info, level_name, log_init, warn};
+use crate::daemon::applist::{reload_list, watch_list, LIST_DIR};
+use crate::daemon::codes::{codes, load_codes, set_codes};
+use crate::daemon::ndk::{call, class, n, service};
+use crate::daemon::observer::{on_am_died, on_observer, set_pm};
+use crate::daemon::profiler::API_DIR;
+use crate::daemon::state::adopt;
+use crate::daemon::status::init_status;
 
 pub(crate) const OUT_DIR: &str = "/data/adb/.config/AntaresRS";
 
+/// Subcommand names accepted as the first word (`sys.azenith-service preload ...`),
+/// plus the old binary names kept working for muscle memory:
+/// `sys.azenith-profilesettings` -> `sys.azenith-service profilesettings`.
+fn subcommand(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "profilesettings" | "settings" | "profile" | "sys.azenith-profilesettings" => cmd::PROFILESETTINGS,
+        "utilityconf" | "utility" | "sys.azenith-utilityconf" => cmd::UTILITYCONF,
+        "preferencedtweaks" | "prefs" | "preferenced" | "sys.azenith-preferencedtweaks" => cmd::PREFERENCEDTWEAKS,
+        "preload" | "preloadbin" | "sys.azenith-preloadbin" => PRELOAD,
+        _ => return None,
+    })
+}
+
 fn main() {
-    if unsafe { libc::getuid() } != 0 { eprintln!("run as root"); std::process::exit(1); }
-    if std::env::args().any(|a| a == "--clearlogs") {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    // Pick up `LIBBINDING_LOG` / the debug flag before anything can log: the
+    // companion commands run before the daemon init below, and without this
+    // their DEBUG lines were dropped by the default Info level.
+    log_init();
+
+    // `--clearlogs` stays the one flag that works without root, as before.
+    if args.iter().any(|a| a == "--clearlogs") {
         clear_logs();
         return;
     }
+
+    // Companion commands first: they run as the same binary but in their own
+    // process, so nothing below (root check, instance lock, binder) applies.
+    if let Some(name) = args.first().and_then(|a| subcommand(a)) {
+        let rest = &args[1..];
+        match name {
+            cmd::PROFILESETTINGS => cmd::settings::run(rest),
+            cmd::UTILITYCONF => cmd::utility::run(rest),
+            cmd::PREFERENCEDTWEAKS => cmd::prefs::run(rest),
+            PRELOAD => preload::run(rest),
+            _ => unreachable!(),
+        }
+        return;
+    }
+
+    if unsafe { libc::getuid() } != 0 { eprintln!("run as root"); std::process::exit(1); }
     let _ = fs::create_dir_all(OUT_DIR);
     let _ = fs::create_dir_all(API_DIR);
     let _ = fs::create_dir_all(LIST_DIR);
@@ -47,13 +80,12 @@ fn main() {
             }
             std::mem::forget(f); // keep the lock for the whole process lifetime
         }
-        Err(e) => warn!("cannot open {lock_path}: {e} (running without instance lock)"),
+        Err(e) => warn!(comp::DAEMON, "cannot open {lock_path}: {e} (running without instance lock)"),
     }
-    log_init();
-    info!("daemon starting (pid {}, log level {})", std::process::id(), level_name());
+    info!(comp::DAEMON, "daemon starting (pid {}, log level {})", std::process::id(), level_name());
 
     let Some(c) = load_codes() else {
-        error!("failed to resolve transaction codes (check binder_resolver.apk)");
+        error!(comp::DAEMON, "failed to resolve transaction codes (check binder_resolver.apk)");
         std::process::exit(1);
     };
     set_codes(c);
@@ -72,26 +104,26 @@ fn main() {
     unsafe {
         let rec = (n.AIBinder_DeathRecipient_new)(on_am_died);
         let r = (n.AIBinder_linkToDeath)(am, rec, null_mut());
-        if r == 0 { debug!("linkToDeath registered on ActivityManager"); }
-        else { warn!("linkToDeath failed, status={r}"); }
+        if r == 0 { debug!(comp::DAEMON, "linkToDeath registered on ActivityManager"); }
+        else { warn!(comp::DAEMON, "linkToDeath failed, status={r}"); }
     }
 
     let obs = unsafe { (n.AIBinder_new)(class(c"android.app.IProcessObserver", on_observer), null_mut()) };
-    if obs.is_null() { error!("failed to create observer binder"); std::process::exit(1); }
+    if obs.is_null() { error!(comp::DAEMON, "failed to create observer binder"); std::process::exit(1); }
 
     let Some(reply) = call(am, codes().reg, |i| unsafe {
         (n.AParcel_writeStrongBinder)(i, obs);
     }) else {
-        error!("registerProcessObserver denied/failed (wrong code for this ROM?)");
+        error!(comp::DAEMON, "registerProcessObserver denied/failed (wrong code for this ROM?)");
         std::process::exit(1);
     };
     unsafe { (n.AParcel_delete)(reply); }
-    info!("IProcessObserver registered with ActivityManager");
+    info!(comp::DAEMON, "IProcessObserver registered with ActivityManager");
 
     unsafe { (n.ABinderProcess_startThreadPool)(); }
-    profiler::init(); // worker that applies profiles via sys.azenith-profilesettings
+    daemon::profiler::init(); // worker that applies profiles via the profilesettings subcommand
     init_status(); // register binder callbacks (screen/saver/zen) + read initial status
     adopt("start"); // write initial state (profile 1/2/3, or 2/NULL if no game is on screen)
-    info!("ready, waiting for callbacks from AMS");
+    info!(comp::DAEMON, "ready, waiting for callbacks from AMS");
     unsafe { (n.ABinderProcess_joinThreadPool)(); }
 }

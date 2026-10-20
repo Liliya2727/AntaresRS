@@ -45,6 +45,8 @@ rm -rf /data/adb/.config/AntaresRS
 
 # Uninstaller Script
 manager_paths="/data/adb/ap/bin /data/adb/ksu/bin"
+# The companion binaries are subcommands of sys.azenith-service now; the old
+# names are still removed so an upgrade cleans up the previous module version.
 binaries="sys.azenith-service sys.azenith-service_log \
           sys.azenith-profilesettings sys.azenith-utilityconf \
           sys.azenith-preferencedtweaks \
