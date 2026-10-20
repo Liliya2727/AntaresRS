@@ -43,8 +43,8 @@ pub(crate) fn reload_list() {
         (added, removed, dropped)
     };
     info!(comp::APPLIST, "gamelist loaded: {total} packages (+{} -{})", added.len(), removed.len());
-    if !added.is_empty() { info!(comp::APPLIST, "gamelist added: {}", added.join(", ")); }
-    if !removed.is_empty() { info!(comp::APPLIST, "gamelist removed: {}", removed.join(", ")); }
+    if !added.is_empty() { debug!(comp::APPLIST, "gamelist added: {}", added.join(", ")); }
+    if !removed.is_empty() { debug!(comp::APPLIST, "gamelist removed: {}", removed.join(", ")); }
     if let Some(p) = dropped { info!(comp::APPLIST, "active app {p} removed from gamelist, falling back"); }
     debug!(comp::APPLIST, "full gamelist: {}", st().list.iter().cloned().collect::<Vec<_>>().join(", "));
     adopt("gamelist changed");

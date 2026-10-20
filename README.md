@@ -54,7 +54,7 @@ without guessing which part of the service wrote it:
 
 ```text
 2026-10-21 00:25:08.582 INFO [cmd.utility.renderer] resetting renderers to default
-2026-10-21 00:25:08.519 ERROR [common.fs] set_permissions failed path=/cpu/cpu0/cpufreq/scaling_governor
+2026-10-21 00:25:08.519 WARN [common.fs] chmod metadata failed path=/cpu/cpu0/cpufreq/scaling_governor err=No such file or directory
 ```
 
 `daemon.*` is the binder engine, `cmd.<command>.<subsystem>` a companion command

@@ -8,13 +8,30 @@ use crate::common::log::{comp, Lv, log_write};
 
 /// `chmod` that warns instead of failing: a sysfs node the kernel refuses to
 /// unlock must not abort the tweak that wanted to write it.
+///
+/// Two quieting rules, because the kernel nodes this runs against do not behave
+/// like disk files:
+///
+/// * a chmod that would not change anything is skipped, so no syscall and no
+///   line for a `/proc/sys/vm/*` node that already sits at its stock `0644`;
+/// * `/proc/sys` takes its mode from the sysctl table and answers `chmod(2)`
+///   with `EPERM` even as root while the node stays writable, so that refusal
+///   is only a DEBUG line — the write in [`write_val`] reports the real outcome.
 pub(crate) fn chmod(path: &str, mode: u32) {
     match fs::metadata(path) {
         Ok(metadata) => {
             let mut perms = metadata.permissions();
+            if perms.mode() & 0o7777 == mode {
+                return;
+            }
             perms.set_mode(mode);
             if let Err(e) = fs::set_permissions(path, perms) {
-                log_write(Lv::Error, comp::COMMON_FS, &format!("set_permissions failed path={} err={}", path, e));
+                let refused = matches!(
+                    e.raw_os_error(),
+                    Some(libc::EPERM) | Some(libc::EACCES) | Some(libc::EROFS)
+                );
+                let lv = if refused { Lv::Debug } else { Lv::Error };
+                log_write(lv, comp::COMMON_FS, &format!("set_permissions failed path={} err={}", path, e));
             }
         }
         Err(e) => log_write(Lv::Warn, comp::COMMON_FS, &format!("chmod metadata failed path={} err={}", path, e)),
